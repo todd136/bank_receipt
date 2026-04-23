@@ -8,7 +8,32 @@ cd /d "%SCRIPT_DIR%"
 REM 增大 MSVC 编译器堆空间，缓解 PyMuPDF 生成 C 文件过大导致的 C1002
 set CL=/Zm500 %CL%
 
-python -m nuitka --standalone --onefile --msvc=latest --assume-yes-for-downloads --noinclude-unittest-mode=nofollow --noinclude-pytest-mode=nofollow --nofollow-import-to=ddddocr,cv2,onnxruntime,pypdfium2_raw,fitz --collect-all=ddddocr --collect-all=cv2 --collect-all=onnxruntime --collect-all=pypdfium2_raw --collect-all=pymupdf --enable-plugin=no-qt --low-memory --lto=no --jobs=1 --windows-uac-admin --onefile-tempdir-spec="{CACHE_DIR}/todd_dev_studio/bank_receipt" --windows-icon-from-ico=logo.ico --company-name="Todd Dev Studio" --product-name="BankReceiptParser" --file-version=1.0.0.0 --product-version=1.0.0.0 --file-description="用于分发银行回单的自动化工具" --copyright="Copyright (c) 2026 Todd Dev Studio. All rights reserved." --output-filename=bank_receipt src\bank_receipt\main.py
+python -m nuitka --standalone --onefile ^
+--msvc=latest ^
+--assume-yes-for-downloads ^
+--noinclude-unittest-mode=nofollow ^
+--noinclude-pytest-mode=nofollow ^
+--include-package=ddddocr ^
+--include-package=cv2 ^
+--include-package=onnxruntime ^
+--include-package=pypdfium2_raw ^
+--include-package=pymupdf ^
+--include-package=fitz ^
+--enable-plugin=no-qt ^
+--low-memory ^
+--lto=no ^
+--jobs=1 ^
+--windows-uac-admin ^
+--onefile-tempdir-spec="{CACHE_DIR}/todd_dev_studio/bank_receipt" ^
+--windows-icon-from-ico=logo.ico ^
+--company-name="Todd Dev Studio" ^
+--product-name="BankReceiptParser" ^
+--file-version=1.0.0.0 ^
+--product-version=1.0.0.0 ^
+--file-description="用于分发银行回单的自动化工具" ^
+--copyright="Copyright (c) 2026 Todd Dev Studio. All rights reserved." ^
+--output-filename=bank_receipt ^
+src\bank_receipt\main.py
 
 if errorlevel 1 exit /b %errorlevel%
 
