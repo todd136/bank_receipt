@@ -1,0 +1,80 @@
+[
+  {
+    "key": "ccb",
+    "name": "中国建设银行",
+    "layout": "horizontal",
+    "detect": {
+      "type": "contains_any",
+      "keywords": ["中国建设银行", "建设银行"]
+    },
+    "payer": { "strategy": "pair_between_labels", "scope": "full" }
+  },
+  {
+    "key": "cgb",
+    "name": "广发银行",
+    "layout": "horizontal",
+    "detect": {
+      "type": "contains_any",
+      "keywords": ["广发银行", "广发银行客户回单"]
+    },
+    "payer": {
+      "strategy": "label_value",
+      "scope": "full",
+      "label": "付款人名称",
+      "stop_before": ["收款人名称"]
+    }
+  },
+  {
+    "key": "cmb",
+    "name": "招商银行",
+    "layout": "horizontal",
+    "detect": {
+      "type": "contains_any",
+      "keywords": ["招商银行", "CHINA MERCHANTS"]
+    },
+    "payer": { "strategy": "generic_first", "scope": "full" }
+  },
+  {
+    "key": "boc",
+    "name": "中国银行",
+    "layout": "horizontal",
+    "detect": {
+      "type": "contains_any",
+      "keywords": ["中国银行", "BANK OF CHINA", "国内支付业务收款回单"]
+    },
+    "payer": { "strategy": "generic_first", "scope": "full" }
+  },
+  {
+    "key": "bcm",
+    "name": "交通银行",
+    "layout": "vertical",
+    "detect": {
+      "type": "section_contains",
+      "start_label": "收款人名称",
+      "end_labels": ["付款人账号", "付款人名称"],
+      "anchor_label": "开户行名称",
+      "keywords_after_anchor": ["交通银行"]
+    },
+    "payer": {
+      "strategy": "label_value",
+      "scope": "full",
+      "label": "付款人名称",
+      "stop_before": ["开户行名称", "收款人名称", "币种", "付款人账号"]
+    }
+  },
+  {
+    "key": "cib",
+    "name": "兴业银行",
+    "layout": "horizontal",
+    "detect": {
+      "type": "contains_any",
+      "keywords": ["兴业银行网上银行客户回单", "兴业银行利息回单", "兴业银行"]
+    },
+    "payer": {
+      "strategy": "label_value",
+      "scope": "left",
+      "label": "全称",
+      "stop_before": ["收款银行", "摘要"]
+    }
+  }
+]

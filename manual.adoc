@@ -1,0 +1,277 @@
+= 银行回单配置说明
+
+你主要会接触两个 JSON 文件（都与程序放在相同的目录中）：
+
+- `bank_templates.json`：识别“这是哪家银行回单”以及“付款人怎么提取”
+- `receipt_assignments.json`：把回单分给哪位财务同事
+
+程序按配置顺序匹配，先命中的规则先用。
+
+== 大纲
+
+* <<quick-view,快速查阅>>
+* <<json-writing,JSON 书写注意（先看）>>
+* <<assignment-section,财务分配配置（receipt_assignments.json）>>
+** <<assignment-steps,新增人员配置步骤>>
+* <<recognition-section,回单识别配置（bank_templates.json）>>
+** <<bank-template-steps,新增银行模板步骤>>
+** <<layout-section,layout（版式）>>
+** <<detect-section,detect 配置>>
+** <<payer-section,payer：strategy / label / stop_before>>
+** <<scope-section,payer.scope（仅 horizontal 有意义）>>
+
+[[quick-view]]
+== 快速查阅
+
+[cols="1,3",options="header"]
+|===
+| 配置项 | 作用
+
+| `key` / `name`
+| 模板标识与展示名（`key` 须唯一且稳定）
+
+| `layout`
+| 决定付款人取词时是否按页中线分左/右栏（见 <<layout-section>>）；**不**决定付款人怎么从文字里解析出来
+
+| `detect`
+| 如何判断「是不是这家银行」
+
+| `payer`
+| 付款人名称：`strategy`（算法）+ `scope`（区域）+ 按需 `label` / `stop_before`
+|===
+
+[[json-writing]]
+== JSON 书写注意（先看）
+
+* 最后一个字段后不要多写逗号
+* 字符串一律用英文双引号 `"`；`key` 在文件中唯一
+* 文件保存为 UTF-8
+
+[[assignment-section]]
+== 财务分配配置（receipt_assignments.json）
+
+这份文件用来把回单自动分配到财务人员目录，支持“多家付款方对应同一个财务”。
+
+[[assignment-steps]]
+=== 新增人员配置步骤
+
+1. 在 `owners` 里新增一个对象，填写 `owner`（财务人员名）
+2. 选择规则写法：
+   - 简单规则（OR）：`payer_matches` / `payee_matches` / `payer_account_matches` / `payee_account_matches`
+   - 组合规则（AND）：`and`（条件列表）
+3. 同一人员可填写多个关键字/账号（多对一）
+4. 保存后先用 1～2 张回单验证，再批量使用
+
+[source,json]
+----
+{
+  "target_root": "财务分配",
+  "owners": [
+    {
+      "owner": "张三",
+      "payer_matches": ["兴业银行", "招商银行", "中国银行"]
+    },
+    {
+      "owner": "李四",
+      "payer_account_matches": ["326660100100056221"]
+    },
+    {
+      "owner": "王五",
+      "payee_account_matches": ["341556012761"]
+    },
+    {
+      "owner": "赵六",
+      "and": [
+        { "by": "payer", "op": "contains", "value": "康彦鹏" },
+        { "by": "payee_account", "op": "equals", "value": "341556012761" }
+      ]
+    }
+  ]
+}
+----
+
+字段含义：
+
+* `target_root`：分配目录根文件夹名
+* `owners`：财务人员列表（按顺序匹配）
+* `owner`：财务人员文件夹名
+* `payer_matches`：按“付款人名称”匹配（包含任一关键字即命中）
+* `payee_matches`：按“收款人名称”匹配（包含任一关键字即命中）
+* `payer_account_matches`：按“付款账号”匹配（去除非数字后相等即命中）
+* `payee_account_matches`：按“收款账号”匹配（去除非数字后相等即命中）
+* `and`：AND 条件列表；所有条件都满足才命中
+** 条件结构：`{ "by": "...", "op": "...", "value": "..." }`
+** `by` 支持：`payer` / `payee` / `payer_account` / `payee_account`
+** `op` 支持：
+*** `payer`：`contains`（默认）或 `equals`
+**** `contains` 时，`value` 可写字符串或数组；若是数组，任一命中即该条件为真
+*** `payer_account` / `payee_account`：`equals`（按账号相等）
+* 若同一 owner 同时配置了简单规则与 `and`，程序优先按 `and` 匹配
+
+分配结果目录示例：
+
+- 若 `target_root` 填写了（如 `财务分配`）：`{base_path}/财务分配/张三/xxx.pdf`
+- 若 `target_root` 留空：`{base_path}/张三/xxx.pdf`
+
+提示：
+
+- 一个财务人员可以配置多个付款人关键字、多个付款账号、多个收款账号（多对一）
+- 如果没有命中任何财务规则，文件不会移动，只保留在原目录
+- 如果同名文件已存在，系统会自动加 `_1`、`_2` 防止覆盖
+
+[[recognition-section]]
+== 回单识别配置（bank_templates.json）
+
+上面一节是“分配给谁”；从这里开始是“这张回单怎么识别字段”。
+
+*如果使用默认的程序，识别不出对应的数据，考虑按照本节内容，配置回单识别策略。*
+
+*说明：`layout` 与 `payer.strategy` 是两件事：*
+
+- layout 管版面（左右栏还是整页）；
+- strategy 管在同一区域里用哪种规则提取付款人名称
+
+[[bank-template-steps]]
+=== 新增银行模板步骤
+
+1. 复制一个最接近的银行对象
+2. 修改 `key`（必须唯一）和 `name`
+3. 选择 `layout`：`horizontal` 或 `vertical`
+4. 配置 `detect`（多数情况先用 `contains_any`）
+5. 配置 `payer`：`strategy`，以及按需 `scope`、`label`、`stop_before`
+6. 用 1～2 张样本回单验证后再批量使用
+
+== 示例（最小可用）
+
+[source,json]
+----
+{
+  "key": "boc",
+  "name": "中国银行",
+  "layout": "horizontal",
+  "detect": {
+    "type": "contains_any",
+    "keywords": ["中国银行", "BANK OF CHINA"]
+  },
+  "payer": { "strategy": "generic_first", "scope": "full" }
+}
+----
+
+== 字段说明
+
+- `key`：模板唯一标识（程序内部用，建议简短稳定，如 `boc`、`icbc`）
+- `name`：银行名称（日志显示用）
+- `layout`：版式，见 <<layout-section>>
+- `detect`：识别该银行的规则，见 <<detect-section>>
+- `payer`：付款人提取，见 <<payer-section>> 与 <<scope-section>>
+
+[[layout-section]]
+== layout（版式）
+
+* `horizontal`（默认）：回单以*左右分栏*为主。程序按页面宽度中线将词块分为左栏 / 右栏；付款人可按 `payer.scope` 选用 `left` / `right` / `full`，减少串栏。
+* `vertical`：回单以*上下排列*为主（如交通银行）。不按中线分左右；付款人提取*始终用整页文本*，**忽略** `payer.scope` 中的 `left` / `right`（等价于强制 `full`）。
+
+若未写 `layout`，按 `horizontal` 处理。
+
+[[detect-section]]
+== detect 配置
+
+支持两种类型：
+
+=== `contains_any`（优先使用）
+
+[source,json]
+----
+"detect": {
+  "type": "contains_any",
+  "keywords": ["招商银行", "CHINA MERCHANTS"]
+}
+----
+
+含义：全文出现任一关键字即命中。
+
+=== `section_contains`（区段 + 关键字，如交行）
+
+[source,json]
+----
+"detect": {
+  "type": "section_contains",
+  "start_label": "收款人名称",
+  "end_labels": ["付款人账号", "付款人名称"],
+  "anchor_label": "开户行名称",
+  "keywords_after_anchor": ["交通银行"]
+}
+----
+
+含义：在「`start_label` 出现之后」到「`end_labels` 中任一标签最先出现」之前的片段内，`anchor_label` 之后须出现 `keywords_after_anchor` 中的关键字。
+
+[[payer-section]]
+== payer：strategy / label / stop_before
+
+`scope` 决定*在哪个区域*把文本交给算法（见 <<scope-section>>）；`strategy` 决定*怎么从这段文本里取出付款人*。
+
+=== `generic_first`
+
+用通用「付款人名称：…」等规则匹配；适合版面上标签较标准、一行一类信息的银行（如招行、中行、工行）。
+
+[source,json]
+----
+"payer": { "strategy": "generic_first", "scope": "full" }
+----
+
+=== `pair_between_labels`
+
+在「付款人全称」与「收款人全称」之间截取（适应同一行紧挨、或字间有空格的版式）。中国建设银行使用此策略。
+
+[source,json]
+----
+"payer": { "strategy": "pair_between_labels", "scope": "full" }
+----
+
+若成对截取失败，会回退到与 `generic_first` 相同的通用匹配。
+
+=== `label_value`
+
+在含 `label` 的行上，取标签后的内容，并在 `stop_before` 中任一标签出现前截断。广发银行、交通银行等使用。
+
+* `label`：起始标签，缺省为 `付款人名称`。
+* `stop_before`：截断标签列表；**建议显式写出**。若省略，程序使用较宽的默认列表（`收款人名称`、`开户行名称`、`币种`、`付款人账号`），可能与个别版式不完全贴合。
+
+广发示例：
+
+[source,json]
+----
+"payer": {
+  "strategy": "label_value",
+  "scope": "full",
+  "label": "付款人名称",
+  "stop_before": ["收款人名称"]
+}
+----
+
+交行示例（`layout` 为 `vertical`，`scope` 写 `full` 即可；`left`/`right` 会被忽略）：
+
+[source,json]
+----
+"payer": {
+  "strategy": "label_value",
+  "scope": "full",
+  "label": "付款人名称",
+  "stop_before": ["开户行名称", "收款人名称", "币种", "付款人账号"]
+}
+----
+
+若按行截取仍无结果，会回退到与 `generic_first` 相同的通用匹配。
+
+[[scope-section]]
+== payer.scope（仅 horizontal 有意义）
+
+`layout` 为 `vertical` 时，付款人始终按整页文本处理，本节不适用。
+
+可选：`full` / `left` / `right`
+
+- `full`：整页合并文本（默认）
+- `left`：仅页面中线以左的词块文本
+- `right`：仅页面中线以右的词块文本
+
+建议：新模板先用 `full`；若出现左栏字段误带右栏内容，再改为 `left` 或 `right`。

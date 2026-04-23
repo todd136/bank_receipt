@@ -1,0 +1,155 @@
+# 银行回单解析系统 (Python 版本)
+
+基于 pdfplumber 的银行回单 PDF 解析工具：在指定目录下批量读取 PDF，按页面坐标区域提取文本并结合规则匹配 **付款人名称**、**付款账号**、**小写金额**、**用途**。解析后会按规则重命名文件，并可按财务分配规则自动归档。
+
+## 项目结构
+
+```
+bank_receipt/
+├── src/
+│   └── bank_receipt/                  # 银行回单主包
+│       ├── __init__.py
+│       ├── main.py                    # 程序入口
+│       ├── receipt.py                 # 数据模型 Receipt
+│       ├── receipt_service.py         # 单张 PDF 解析（坐标区域 + 正则）
+│       ├── receipt_processor.py       # 批量扫描与调度 ReceiptProcessor
+│       ├── file_service.py            # 文件扫描、重命名、财务分配
+│       ├── logger_config.py           # 日志配置
+│       ├── bank_fields.py             # 标签匹配/分栏文本辅助
+│       ├── receipt_layout.py          # 页面词块左右分栏
+│       └── receipt_partition.py       # 分区相关（当前回单主流程未引用）
+├── requirements.txt
+├── README.adoc
+├── manual.adoc                       # 银行模板与分配规则说明（业务人员）
+└── receipt_assignments.json          # 财务分配规则示例（运行时放到 base_path 下）
+```
+
+## 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+主要依赖：
+
+- `pdfplumber`：从 PDF 提取文字与词块坐标（当前解析逻辑依赖此项）
+
+说明：`requirements.txt` 中若仍包含 `openpyxl`，与当前主程序无耦合；若你本地已不需要，可自行从依赖文件中移除。
+
+## 使用方法
+
+### 基本使用
+
+```bash
+cd src/bank_receipt
+python3 main.py
+```
+
+或在项目根目录（`main.py` 会将项目根加入 `sys.path`）：
+
+```bash
+python3 src/bank_receipt/main.py
+```
+
+### 修改配置
+
+在 `main.py` 中修改 `base_path`，指向存放银行回单 PDF 的目录：
+
+```python
+base_path = '/Volumes/share/temp/bank_receipt'  # 改为你的回单目录
+```
+
+银行模板与财务分配规则说明（业务人员）见项目根目录 link:manual.adoc[manual.adoc]。
+
+## 处理流程
+
+```
+扫描目录下 PDF → 逐张解析字段 → 按规则重命名 → 按财务规则分配目录 → 得到 Receipt 列表
+```
+
+### 详细说明
+
+1. **扫描 PDF**：在 `base_path` 下查找所有 `.pdf` 文件（见 `file_service.find_files`）。
+2. **单张解析**（`receipt_service.extract_invoice_by_table_and_text`）：
+   - 使用 `pdfplumber` 按页提取 `extract_words`，得到带坐标的词块；
+   - 在归一化矩形区域（`FIELD_BBOX_RATIOS`）内拼出局部文本，用正则匹配字段；
+   - 若区域内未匹配到，再对整页 `extract_text` 做同一组正则兜底。
+3. **批量调度**（`ReceiptProcessor.process_batch`）：遍历文件、去重（按 `Receipt.code`）、汇总列表。
+4. **重命名文件**：按 `付款人_金额_用途.pdf` 重命名；无付款人则不重命名；无用途则省略用途段。
+5. **财务分配（可选）**：读取 `{base_path}/receipt_assignments.json`，按“付款人/付款账号”规则匹配后移动：
+   - `target_root` 有值：`{base_path}/{target_root}/{财务人员}/`
+   - `target_root` 为空：`{base_path}/{财务人员}/`
+
+## 输出与日志
+
+- **控制台 / 日志**：处理过程与单张结果通过 `logging` 输出。
+- **日志文件**：`{base_path}/logs/app_{日期}.log`（由 `logger_config` 配置）。
+
+## 解析字段（Receipt）
+
+`receipt.py` 中 `Receipt` 与业务含义对应关系：
+
+| 字段 | 含义 |
+|------|------|
+| `name` | PDF 文件名 |
+| `code` | 去重标识（默认与文件名相同） |
+| `buyer` | 付款人名称 |
+| `payer_account` | 付款账号 |
+| `amount` | 小写金额（字符串，已做简单归一化） |
+| `invoice_type` | 用途（字段名沿用命名，语义为「用途」） |
+| `date` | 预留，当前回单逻辑可为空 |
+
+匹配关键词可在 `receipt_service.py` 中调整（如 `付款人名称`、`付款账号`、`小写金额`、`用途/摘要/附言` 等）。
+
+## 财务分配规则（receipt_assignments.json）
+
+在运行目录 `base_path` 下放置 `receipt_assignments.json`，示例：
+
+```json
+{
+  "target_root": "财务分配",
+  "owners": [
+    {
+      "owner": "张三",
+      "payer_matches": ["兴业银行", "招商银行"]
+    },
+    {
+      "owner": "李四",
+      "payer_account_matches": ["360100100056221"]
+    }
+  ]
+}
+```
+
+- `target_root`：分配根目录。填值时走 `{base_path}/{target_root}/{owner}/`；留空时走 `{base_path}/{owner}/`。
+- `owners`：按顺序匹配；先命中的财务人员生效。
+- 每个 `owner` 规则二选一：配置 `payer_matches` 就按名称匹配；配置 `payer_account_matches` 就按账号匹配。
+- `payer_matches`：只要“付款人名称”里包含任一关键字即命中。
+- `payer_account_matches`：与“付款账号”做精确匹配（会自动忽略空格和非数字字符）。
+
+## 注意事项
+
+1. **PDF 需含可选中文字**：扫描件或纯图 PDF 需 OCR 后才能用本方案。
+2. **版式差异**：`FIELD_BBOX_RATIOS` 为相对页面宽高的比例框，不同银行模板需按样张微调。
+3. **多页**：会逐页尝试提取，先得到非空值的字段会保留（同一字段不会用后页覆盖已解析值）。
+
+## 错误处理
+
+- 单张 PDF 解析失败会记错误日志并跳过，继续处理后续文件。
+- 若目录内有 PDF 但全部解析失败，`process_batch` 返回空列表并打错误日志。
+
+## 说明
+
+部分函数名（如 `extract_invoice_by_table_and_text`）为沿用命名，当前业务为银行回单。
+
+== Nuitka 打包（Windows）
+
+在项目根目录执行：
+
+  .\build.bat
+
+或手动执行（请按本机路径调整；入口为 `src\bank_receipt\main.py`）：
+
+  python -m nuitka --standalone --onefile ... --output-filename=bank_receipt src\bank_receipt\main.py
+
+（`build.bat` 若仍为旧参数，请以仓库内脚本为准或按上式自行替换产品名与图标路径。）
