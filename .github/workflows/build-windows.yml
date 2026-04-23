@@ -26,7 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install nuitka
+          pip install "nuitka[onefile]"
 
       - name: Build with Nuitka
         shell: cmd
