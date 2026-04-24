@@ -80,6 +80,10 @@
       "payee_account_matches": ["341556012761"]
     },
     {
+      "owner": "钱七",
+      "payee_matches": ["收款人名称1", "收款人名称2"]
+    },
+    {
       "owner": "赵六",
       "and": [
         { "by": "payer", "op": "contains", "value": "康彦鹏" },
