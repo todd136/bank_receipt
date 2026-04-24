@@ -15,13 +15,12 @@ python -m nuitka --standalone --onefile ^
 --assume-yes-for-downloads ^
 --noinclude-unittest-mode=nofollow ^
 --noinclude-pytest-mode=nofollow ^
---nofollow-import-to=fitz ^
---nofollow-import-to=pymupdf ^
 --include-package=ddddocr ^
 --include-package=cv2 ^
 --include-package=onnxruntime ^
 --include-package=pypdfium2_raw ^
 --include-package=pymupdf ^
+--prefer-source-code=no ^
 --enable-plugin=no-qt ^
 --low-memory ^
 --lto=no ^
