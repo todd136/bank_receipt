@@ -1,2 +1,7 @@
 # 核心解析
 pdfplumber==0.11.8
+PyMuPDF
+
+# 账号兜底识别（PyMuPDF截图 + OCR）
+ddddocr
+Pillow
