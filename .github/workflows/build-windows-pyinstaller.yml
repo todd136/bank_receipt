@@ -37,15 +37,15 @@ jobs:
       - name: Verify artifact
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\dist\bank_receipt.exe")) {
-            Write-Host "dist\\bank_receipt.exe not found."
+          if (-not (Test-Path ".\dist\bank_receipt\bank_receipt.exe")) {
+            Write-Host "dist\\bank_receipt\\bank_receipt.exe not found."
             Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object FullName
-            throw "Build output dist\\bank_receipt.exe not found."
+            throw "Build output dist\\bank_receipt\\bank_receipt.exe not found."
           }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bank_receipt-windows-exe-pyinstaller
-          path: dist/bank_receipt.exe
+          name: bank_receipt-windows-onedir-pyinstaller
+          path: dist/bank_receipt/**
           if-no-files-found: error

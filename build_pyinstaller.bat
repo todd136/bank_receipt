@@ -17,7 +17,7 @@ set FILE_DESCRIPTION=用于分发银行回单的自动化工具
 set COPYRIGHT_TEXT=Copyright (c) 2026 Todd Dev Studio. All rights reserved.
 set ICON_FILE=logo.ico
 set ENTRY_SCRIPT=src\bank_receipt\main.py
-set RUNTIME_TMPDIR=%LOCALAPPDATA%\todd_dev_studio\bank_receipt
+set CONTENTS_DIR=runtime
 set VERSION_FILE=bank_receipt_version_info.txt
 
 echo [INFO] Build target: %APP_NAME%.exe
@@ -54,9 +54,9 @@ if not exist "%VERSION_FILE%" (
 python -m PyInstaller ^
 --noconfirm ^
 --clean ^
---onefile ^
+--onedir ^
 --name %APP_NAME% ^
---runtime-tmpdir "%RUNTIME_TMPDIR%" ^
+--contents-directory "%CONTENTS_DIR%" ^
 --uac-admin ^
 %ICON_ARG% ^
 --hidden-import pymupdf ^
@@ -78,5 +78,6 @@ if errorlevel 1 (
 
 echo.
 echo [OK] Build finished.
-echo [OK] Output: dist\%APP_NAME%.exe
+echo [OK] Output: dist\%APP_NAME%\%APP_NAME%.exe
+echo [OK] Runtime deps dir: dist\%APP_NAME%\%CONTENTS_DIR%
 exit /b 0
