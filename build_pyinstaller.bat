@@ -49,44 +49,36 @@ if exist "%APP_NAME%.spec" del /f /q "%APP_NAME%.spec"
 if exist "%VERSION_FILE%" del /f /q "%VERSION_FILE%"
 
 REM 生成 Windows 版本信息文件（供 PyInstaller 写入 EXE 元数据）
-powershell -NoProfile -Command ^
-  "$appVersion='%APP_VERSION%';" ^
-  "$company='%COMPANY_NAME%';" ^
-  "$desc='%FILE_DESCRIPTION%';" ^
-  "$copyright='%COPYRIGHT_TEXT%';" ^
-  "$product='%PRODUCT_NAME%';" ^
-  "$appName='%APP_NAME%';" ^
-  "$v=$appVersion.Split('.');" ^
-  "$content = @\"" ^
-# UTF-8 ^
-VSVersionInfo( ^
-  ffi=FixedFileInfo( ^
-    filevers=($($v[0]), $($v[1]), $($v[2]), $($v[3])), ^
-    prodvers=($($v[0]), $($v[1]), $($v[2]), $($v[3])), ^
-    mask=0x3f, ^
-    flags=0x0, ^
-    OS=0x40004, ^
-    fileType=0x1, ^
-    subtype=0x0, ^
-    date=(0, 0) ^
-  ), ^
-  kids=[ ^
-    StringFileInfo([ ^
-      StringTable('040904B0', [ ^
-        StringStruct('CompanyName', '$company'), ^
-        StringStruct('FileDescription', '$desc'), ^
-        StringStruct('FileVersion', '$appVersion'), ^
-        StringStruct('InternalName', '$appName'), ^
-        StringStruct('LegalCopyright', '$copyright'), ^
-        StringStruct('OriginalFilename', '$appName.exe'), ^
-        StringStruct('ProductName', '$product'), ^
-        StringStruct('ProductVersion', '$appVersion') ^
-      ]) ^
-    ]), ^
-    VarFileInfo([VarStruct('Translation', [1033, 1200])]) ^
-  ] ^
-) ^
-\"@; Set-Content -Path '%VERSION_FILE%' -Value $content -Encoding UTF8"
+(
+echo # UTF-8
+echo VSVersionInfo(
+echo   ffi=FixedFileInfo(
+echo     filevers=(1, 0, 0, 0),
+echo     prodvers=(1, 0, 0, 0),
+echo     mask=0x3f,
+echo     flags=0x0,
+echo     OS=0x40004,
+echo     fileType=0x1,
+echo     subtype=0x0,
+echo     date=(0, 0)
+echo   ),
+echo   kids=[
+echo     StringFileInfo([
+echo       StringTable('040904B0', [
+echo         StringStruct('CompanyName', '%COMPANY_NAME%'),
+echo         StringStruct('FileDescription', '%FILE_DESCRIPTION%'),
+echo         StringStruct('FileVersion', '%APP_VERSION%'),
+echo         StringStruct('InternalName', '%APP_NAME%'),
+echo         StringStruct('LegalCopyright', '%COPYRIGHT_TEXT%'),
+echo         StringStruct('OriginalFilename', '%APP_NAME%.exe'),
+echo         StringStruct('ProductName', '%PRODUCT_NAME%'),
+echo         StringStruct('ProductVersion', '%APP_VERSION%')
+echo       ])
+echo     ]),
+echo     VarFileInfo([VarStruct('Translation', [1033, 1200])])
+echo   ]
+echo )
+) > "%VERSION_FILE%"
 
 if errorlevel 1 (
   echo [ERROR] Failed to generate version file.
