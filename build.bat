@@ -10,7 +10,7 @@ set CL=/Zm2000 %CL%
 REM 禁用 clcache：大 TU 编译时 clcache 易触发 C1002，且 Nuitka 可能报 Unexpected output
 set CLCACHE_DISABLE=1
 
-python -m nuitka --standalone --onefile ^
+python -m nuitka --standalone ^
 --msvc=latest ^
 --assume-yes-for-downloads ^
 --noinclude-unittest-mode=nofollow ^
@@ -20,7 +20,7 @@ python -m nuitka --standalone --onefile ^
 --include-package=onnxruntime ^
 --include-package=pypdfium2_raw ^
 --include-package=pymupdf ^
---prefer-source-code=no ^
+--no-prefer-source-code
 --enable-plugin=no-qt ^
 --low-memory ^
 --lto=no ^
