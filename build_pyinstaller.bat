@@ -18,7 +18,7 @@ set COPYRIGHT_TEXT=Copyright (c) 2026 Todd Dev Studio. All rights reserved.
 set ICON_FILE=logo.ico
 set ENTRY_SCRIPT=src\bank_receipt\main.py
 set RUNTIME_TMPDIR=%LOCALAPPDATA%\todd_dev_studio\bank_receipt
-set VERSION_FILE=%SCRIPT_DIR%bank_receipt_version_info.txt
+set VERSION_FILE=bank_receipt_version_info.txt
 
 echo [INFO] Build target: %APP_NAME%.exe
 echo [INFO] Version: %APP_VERSION%
@@ -46,42 +46,8 @@ REM 清理旧产物
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
 if exist "%APP_NAME%.spec" del /f /q "%APP_NAME%.spec"
-if exist "%VERSION_FILE%" del /f /q "%VERSION_FILE%"
-
-REM 生成 Windows 版本信息文件（供 PyInstaller 写入 EXE 元数据）
-(
-echo # UTF-8
-echo VSVersionInfo(
-echo   ffi=FixedFileInfo(
-echo     filevers=(1, 0, 0, 0),
-echo     prodvers=(1, 0, 0, 0),
-echo     mask=0x3f,
-echo     flags=0x0,
-echo     OS=0x40004,
-echo     fileType=0x1,
-echo     subtype=0x0,
-echo     date=(0, 0)
-echo   ),
-echo   kids=[
-echo     StringFileInfo([
-echo       StringTable('040904B0', [
-echo         StringStruct('CompanyName', '%COMPANY_NAME%'),
-echo         StringStruct('FileDescription', '%FILE_DESCRIPTION%'),
-echo         StringStruct('FileVersion', '%APP_VERSION%'),
-echo         StringStruct('InternalName', '%APP_NAME%'),
-echo         StringStruct('LegalCopyright', '%COPYRIGHT_TEXT%'),
-echo         StringStruct('OriginalFilename', '%APP_NAME%.exe'),
-echo         StringStruct('ProductName', '%PRODUCT_NAME%'),
-echo         StringStruct('ProductVersion', '%APP_VERSION%')
-echo       ])
-echo     ]),
-echo     VarFileInfo([VarStruct('Translation', [1033, 1200])])
-echo   ]
-echo )
-) > "%VERSION_FILE%"
-
-if errorlevel 1 (
-  echo [ERROR] Failed to generate version file.
+if not exist "%VERSION_FILE%" (
+  echo [ERROR] Version file not found: %VERSION_FILE%
   exit /b 3
 )
 
@@ -107,11 +73,8 @@ python -m PyInstaller ^
 
 if errorlevel 1 (
   echo [ERROR] Build failed.
-  if exist "%VERSION_FILE%" del /f /q "%VERSION_FILE%"
   exit /b %errorlevel%
 )
-
-if exist "%VERSION_FILE%" del /f /q "%VERSION_FILE%"
 
 echo.
 echo [OK] Build finished.
