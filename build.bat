@@ -10,20 +10,16 @@ set CL=/Zm2000 %CL%
 REM 禁用 clcache：大 TU 编译时 clcache 易触发 C1002，且 Nuitka 可能报 Unexpected output
 set CLCACHE_DISABLE=1
 
-python -m nuitka --standalone ^
+python -m nuitka --standalone --onefile ^
 --msvc=latest ^
 --assume-yes-for-downloads ^
 --noinclude-unittest-mode=nofollow ^
 --noinclude-pytest-mode=nofollow ^
---include-package=ddddocr ^
---include-package=cv2 ^
---include-package=onnxruntime ^
---include-package=pypdfium2_raw ^
---include-package=pymupdf ^
 --enable-plugin=no-qt ^
 --low-memory ^
 --lto=no ^
---jobs=1 ^
+--jobs=4 ^
+--onefile-tempdir-spec="{CACHE_DIR}/todd_dev_studio/bank_receipt" ^
 --windows-uac-admin ^
 --windows-icon-from-ico=logo.ico ^
 --company-name="Todd Dev Studio" ^

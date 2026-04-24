@@ -13,7 +13,6 @@ import pdfplumber
 
 from .bank_fields import label_flex_pattern, pick_scoped_text
 from .bank_profile_service import BankProfile, _normalize_layout, bank_profiles_for_base, detect_bank
-from .pymupdf_service import recover_accounts_by_dual_strategy
 from .receipt import Receipt
 from .receipt_layout import build_page_scoped_texts
 from .receipt_partition import build_receipt_lines
@@ -734,25 +733,6 @@ def extract_invoice_by_table_and_text(
     }
     profile = detect_bank(scoped['full'][:8000], profiles)
     payer, payee, payer_account, payee_account, amount, purpose, summary, currency = extract_fields_from_text(scoped, profile)
-
-    # 账号缺失时，启用双方案兜底：
-    # 方案1 glyph-code 映射，方案2 PyMuPDF 截图 + ddddocr。
-    if not payer_account or not payee_account:
-        recovered = recover_accounts_by_dual_strategy(
-            pdf_file_path,
-            base_path,
-            profile.key if profile else "",
-        )
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                '账号兜底对比: s1_payer=%r, s1_payee=%r, s2_payer=%r, s2_payee=%r',
-                recovered.get('scheme1_payer', ''),
-                recovered.get('scheme1_payee', ''),
-                recovered.get('scheme2_payer', ''),
-                recovered.get('scheme2_payee', ''),
-            )
-        payer_account = payer_account or recovered.get('payer_account', '')
-        payee_account = payee_account or recovered.get('payee_account', '')
 
     result.buyer = payer
     result.payee = payee

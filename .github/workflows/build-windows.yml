@@ -45,15 +45,15 @@ jobs:
       - name: Verify artifact
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\main.dist\bank_receipt.exe")) {
-            Write-Host "main.dist\\bank_receipt.exe not found."
+          if (-not (Test-Path ".\bank_receipt.exe")) {
+            Write-Host "bank_receipt.exe not found in repo root."
             Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object FullName
-            throw "Build output main.dist\\bank_receipt.exe not found."
+            throw "Build output bank_receipt.exe not found."
           }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bank_receipt-windows-dist
-          path: main.dist/**
+          name: bank_receipt-windows-exe
+          path: bank_receipt.exe
           if-no-files-found: error
