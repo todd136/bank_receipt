@@ -22,7 +22,6 @@ python -m nuitka --standalone --onefile ^
 --include-package=onnxruntime ^
 --include-package=pypdfium2_raw ^
 --include-package=pymupdf ^
---collect-all=pymupdf ^
 --enable-plugin=no-qt ^
 --low-memory ^
 --lto=no ^
