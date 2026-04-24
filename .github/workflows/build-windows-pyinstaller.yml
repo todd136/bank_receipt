@@ -1,7 +1,11 @@
-name: Build Windows EXE
+name: Build Windows EXE (PyInstaller)
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
   build:
@@ -18,38 +22,30 @@ jobs:
           cache: "pip"
           cache-dependency-path: requirements.txt
 
-      - name: Cache Nuitka
-        uses: actions/cache@v4
-        with:
-          path: C:\Users\runneradmin\AppData\Local\Nuitka\Nuitka\Cache
-          key: nuitka-${{ runner.os }}-py312-${{ hashFiles('requirements.txt', 'build.bat') }}
-          restore-keys: |
-            nuitka-${{ runner.os }}-py312-
-
       - name: Install dependencies
         shell: pwsh
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install "nuitka[onefile]"
+          pip install pyinstaller
 
-      - name: Build with Nuitka
+      - name: Build with PyInstaller
         shell: cmd
         run: |
-          call build.bat
+          call build_pyinstaller.bat
 
       - name: Verify artifact
         shell: pwsh
         run: |
-          if (-not (Test-Path ".\bank_receipt.exe")) {
-            Write-Host "bank_receipt.exe not found in repo root."
+          if (-not (Test-Path ".\dist\bank_receipt.exe")) {
+            Write-Host "dist\\bank_receipt.exe not found."
             Get-ChildItem -Path . -Recurse -Filter *.exe | Select-Object FullName
-            throw "Build output bank_receipt.exe not found."
+            throw "Build output dist\\bank_receipt.exe not found."
           }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: bank_receipt-windows-exe
-          path: bank_receipt.exe
+          name: bank_receipt-windows-exe-pyinstaller
+          path: dist/bank_receipt.exe
           if-no-files-found: error
