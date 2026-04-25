@@ -21,12 +21,12 @@ def main():
     base_path = get_executable_dir()
 
     # 可按需修改为你的银行回单目录
-    # base_path = '/Volumes/share/temp/bank_receipt'
+    base_path = '/Volumes/share/temp/bank_receipt'
 
     setup_logger(
         base_path,
         global_level=logging.INFO,
-        module_levels={'src.bank_receipt': logging.INFO}
+        module_levels={'src.bank_receipt': logging.DEBUG}
     )
 
     logging.info(f'开始在主路径： {str(base_path)} 下处理银行回单...')

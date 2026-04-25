@@ -200,7 +200,7 @@ def _validate_assignment_owners(owners: List[dict]) -> None:
 
 
 def _normalize_account(v: str) -> str:
-    return re.sub(r'\D+', '', v or '')
+    return re.sub(r'[^A-Za-z0-9]+', '', (v or '')).upper()
 
 
 def _match_condition(
@@ -209,6 +209,7 @@ def _match_condition(
     value,
     payer_v: str,
     payee_v: str,
+    remark_v: str,
     payer_account_v: str,
     payee_account_v: str,
 ) -> bool:
@@ -217,7 +218,7 @@ def _match_condition(
     if not by_v or value is None:
         return False
 
-    if by_v == 'payer':
+    if by_v in ('payer', 'payee', 'remark'):
         if isinstance(value, list):
             values = [str(v).strip() for v in value if str(v).strip()]
         else:
@@ -225,21 +226,11 @@ def _match_condition(
             values = [one] if one else []
         if not values:
             return False
+        target = payer_v if by_v == 'payer' else (payee_v if by_v == 'payee' else remark_v)
         if op_v in ('eq', 'equals', 'exact'):
-            return any(payer_v == v for v in values)
-        # contains: value 为数组时，任一命中即为真
-        return any(payer_v and v in payer_v for v in values)
-    if by_v == 'payee':
-        if isinstance(value, list):
-            values = [str(v).strip() for v in value if str(v).strip()]
-        else:
-            one = str(value).strip()
-            values = [one] if one else []
-        if not values:
-            return False
-        if op_v in ('eq', 'equals', 'exact'):
-            return any(payee_v == v for v in values)
-        return any(payee_v and v in payee_v for v in values)
+            return any(target == v for v in values)
+        # contains / contains_any: value 为数组时，任一命中即为真
+        return any(target and v in target for v in values)
 
     raw = str(value).strip()
     if not raw:
@@ -258,6 +249,7 @@ def _match_condition(
 def match_receipt_owner(
     payer: str,
     payee: str,
+    remark: str,
     payer_account: str,
     payee_account: str,
     owners: List[dict],
@@ -265,6 +257,7 @@ def match_receipt_owner(
     """按配置顺序匹配财务人员。"""
     payer_v = (payer or '').strip()
     payee_v = (payee or '').strip()
+    remark_v = (remark or '').strip()
     payer_account_v = _normalize_account(payer_account)
     payee_account_v = _normalize_account(payee_account)
     for owner_cfg in owners:
@@ -281,7 +274,7 @@ def match_receipt_owner(
                 by = str(cond.get('by', '')).strip()
                 op = str(cond.get('op', 'contains')).strip()
                 value = cond.get('value', '')
-                if not _match_condition(by, op, value, payer_v, payee_v, payer_account_v, payee_account_v):
+                if not _match_condition(by, op, value, payer_v, payee_v, remark_v, payer_account_v, payee_account_v):
                     ok = False
                     break
             if ok:

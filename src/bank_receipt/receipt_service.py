@@ -505,6 +505,41 @@ def _clean_payee(raw: str) -> str:
     return s
 
 
+def _score_payee_candidate(v: str) -> int:
+    """
+    收款人候选打分：优先“看起来像名称”的文本，抑制包含业务标签的长串误命中。
+    """
+    s = (v or '').strip()
+    if not s:
+        return -10**9
+    score = 0
+    # 基础分：长度适中（公司名通常 6~40）
+    n = len(s)
+    if 6 <= n <= 40:
+        score += 80
+    else:
+        score += max(0, 60 - abs(n - 20))
+    # 含中文公司名特征加分
+    if any(k in s for k in ('公司', '有限', '集团', '中心', '管理', '科技', '物业')):
+        score += 60
+    # 纯名称倾向：数字越少越好
+    digit_cnt = len(re.findall(r'\d', s))
+    score -= digit_cnt * 6
+    # 业务标签强惩罚（常见“长串拼接”噪声）
+    bad_tokens = (
+        '账户', '帐户', '账号', '用户号', '汇出行', '汇款备注', '汇款附言',
+        '支付清算', '交易日期', '打印柜员', '打印机构', '打印卡号', '流水号',
+        '凭证', '开户行',
+    )
+    for t in bad_tokens:
+        if t in s:
+            score -= 80
+    # 出现大量冒号通常是键值对串，降权
+    score -= s.count(':') * 20
+    score -= s.count('：') * 20
+    return score
+
+
 def _extract_payee_name(text: str) -> str:
     text = _sanitize_pdf_text(text)
     candidates: List[str] = []
@@ -534,12 +569,12 @@ def _extract_payee_name(text: str) -> str:
                 candidates.append(v)
     if not candidates:
         return ''
-    # 选优：优先长度更长（一般更完整），再按出现频次与字典序稳定排序
+    # 选优：优先“名称质量”高的候选，避免误选包含业务标签的长串。
     freq: Dict[str, int] = {}
     for c in candidates:
         freq[c] = freq.get(c, 0) + 1
     uniq = list(freq.keys())
-    uniq.sort(key=lambda x: (len(x), freq[x], x), reverse=True)
+    uniq.sort(key=lambda x: (_score_payee_candidate(x), freq[x], len(x), x), reverse=True)
     return uniq[0]
 
 
@@ -551,7 +586,7 @@ def _extract_payer_account(text: str) -> str:
     raw = _first_match(strong_patterns, text)
     if not raw:
         return ''
-    return re.sub(r'\D+', '', raw)
+    return re.sub(r'[^A-Za-z0-9\-]+', '', raw).upper()
 
 
 def _extract_payee_account(text: str) -> str:
@@ -559,7 +594,37 @@ def _extract_payee_account(text: str) -> str:
     raw = _first_match(_PAYEE_ACCOUNT_GENERIC, text)
     if not raw:
         return ''
-    return re.sub(r'\D+', '', raw)
+    return re.sub(r'[^A-Za-z0-9\-]+', '', raw).upper()
+
+
+def _extract_parallel_accounts(text: str) -> Tuple[str, str]:
+    """
+    提取建行等“同一行左右双账号”版式：
+    例如：账 号 01-10-000013-02 账 号 11001058900052503197
+    返回 (payer_account, payee_account)；未命中则返回空串。
+    """
+    text = _sanitize_pdf_text(text)
+    patterns = [
+        # 标准行：账 号 ... 账 号 ...
+        re.compile(
+            r'账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,}?)\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})',
+            re.MULTILINE,
+        ),
+        # OCR/文本拼接后可能出现：款账号...款账号...
+        re.compile(
+            r'款\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,}?)\s*款\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})',
+            re.MULTILINE,
+        ),
+    ]
+    for pat in patterns:
+        m = pat.search(text)
+        if not m:
+            continue
+        left = re.sub(r'[^A-Za-z0-9\-]+', '', (m.group(1) or '')).upper()
+        right = re.sub(r'[^A-Za-z0-9\-]+', '', (m.group(2) or '')).upper()
+        if left or right:
+            return left, right
+    return '', ''
 
 
 def _rebalance_accounts_for_generic_layout(
@@ -626,6 +691,23 @@ def extract_fields_from_text(
     payee = _extract_payee_name(t_payer)
     payer_account = _extract_payer_account(t_payer)
     payee_account = _extract_payee_account(t_payer)
+    # 建行等双栏回单：同一行常出现“账号 ... 账号 ...”，常规标签法容易漏提或把两侧账号混为同一个
+    dual_payer, dual_payee = _extract_parallel_accounts(t_payer)
+    if dual_payer or dual_payee:
+        payer_account = payer_account or dual_payer
+        # 若收款账号为空，或与付款账号相同但双栏结果左右不同，则优先使用右侧账号
+        if (
+            not payee_account
+            or (
+                payer_account
+                and payee_account
+                and payer_account == payee_account
+                and dual_payer
+                and dual_payee
+                and dual_payer != dual_payee
+            )
+        ):
+            payee_account = dual_payee or payee_account
     payer_account, payee_account = _rebalance_accounts_for_generic_layout(
         payer,
         payee,

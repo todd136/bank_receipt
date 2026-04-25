@@ -67,6 +67,7 @@ class ReceiptProcessor:
             owner = match_receipt_owner(
                 invoice.buyer,
                 invoice.payee,
+                f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),
                 invoice.payer_account,
                 invoice.payee_account,
                 self.assignment_cfg.get('owners', []),
