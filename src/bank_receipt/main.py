@@ -21,7 +21,7 @@ def main():
     base_path = get_executable_dir()
 
     # 可按需修改为你的银行回单目录
-    base_path = '/Volumes/share/temp/bank_receipt'
+    # base_path = '/Volumes/share/temp/bank_receipt'
 
     setup_logger(
         base_path,
