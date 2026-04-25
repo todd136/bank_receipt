@@ -627,6 +627,70 @@ def _extract_parallel_accounts(text: str) -> Tuple[str, str]:
     return '', ''
 
 
+def _clean_bank_name(raw: str) -> str:
+    s = _clean_value(raw)
+    # 截断后续字段与噪声标签
+    for stop in (
+        '付款人', '收款人', '账号', '卡号', '币种', '金额', '用途',
+        '摘要', '备注', '交易', '流水号', '打印', '会计业务章'
+    ):
+        m = re.search(label_flex_pattern(stop), s)
+        if m and m.start() > 1:
+            s = s[:m.start()].strip()
+            break
+    # 去掉尾部业务章/流水类编码（如 EFDD4498、AB12CD34）
+    s = re.sub(r'\s+[A-Z]{2,}\d{3,}[A-Z0-9]*\s*$', '', s).strip()
+    s = re.sub(r'\s+', ' ', s).strip()
+    return s
+
+
+def _extract_payee_bank_name(text: str, payee: str = '') -> str:
+    """
+    提取收款人开户行名称，兼容以下版式：
+    1) 收款开户行/收款人开户行：XXX
+    2) 开户行 A 开户行 B（双栏时取右侧 B）
+    3) 开户行名称 XXX（单栏时取首个）
+    """
+    text = _sanitize_pdf_text(text)
+    lines = [ln.strip() for ln in text.splitlines() if ln and ln.strip()]
+
+    # 0) 若已识别到收款人名称，优先在其附近窗口内取“开户行名称”，避免误取付款侧开户行
+    payee_v = (payee or '').strip()
+    if payee_v and lines:
+        for i, ln in enumerate(lines):
+            if '收款人名称' in ln and payee_v in ln:
+                lo = max(0, i - 3)
+                hi = min(len(lines), i + 4)
+                for w in lines[lo:hi]:
+                    m = re.search(r'开\s*户\s*行(?:名\s*称)?\s*[:：]?\s*(.+)', w)
+                    if m:
+                        v = _clean_bank_name(m.group(1))
+                        if v:
+                            return v
+    # 1) 明确“收款”标签优先
+    for ln in lines:
+        m = re.search(r'收\s*款\s*(?:人\s*)?开\s*户\s*行(?:名\s*称)?\s*[:：]?\s*(.+)', ln)
+        if m:
+            v = _clean_bank_name(m.group(1))
+            if v:
+                return v
+    # 2) 双栏“开户行 ... 开户行 ...”取右侧
+    for ln in lines:
+        m = re.search(r'开\s*户\s*行(?:名\s*称)?\s*[:：]?\s*(.+?)\s*开\s*户\s*行(?:名\s*称)?\s*[:：]?\s*(.+)', ln)
+        if m:
+            right = _clean_bank_name(m.group(2))
+            if right:
+                return right
+    # 3) 单栏“开户行名称 ...”回退
+    for ln in lines:
+        m = re.search(r'开\s*户\s*行(?:名\s*称)?\s*[:：]?\s*(.+)', ln)
+        if m:
+            v = _clean_bank_name(m.group(1))
+            if v:
+                return v
+    return ''
+
+
 def _rebalance_accounts_for_generic_layout(
     payer: str,
     payee: str,
@@ -645,7 +709,7 @@ def _rebalance_accounts_for_generic_layout(
 def extract_fields_from_text(
     scoped: Dict[str, str],
     profile: Optional[BankProfile],
-) -> Tuple[str, str, str, str, str, str, str, str]:
+) -> Tuple[str, str, str, str, str, str, str, str, str]:
     """scoped 含 full / left / right，由 bank_templates.json 的 scope 选择栏位。"""
     payer_ps = profile.payer_patterns if profile else _PAYER_GENERIC
 
@@ -688,7 +752,9 @@ def extract_fields_from_text(
     else:
         payer = _best_payer_from_patterns(payer_ps, t_payer)
 
+    t_full = _sanitize_pdf_text(scoped.get('full', ''))
     payee = _extract_payee_name(t_payer)
+    payee_bank_name = _extract_payee_bank_name(t_full, payee)
     payer_account = _extract_payer_account(t_payer)
     payee_account = _extract_payee_account(t_payer)
     # 建行等双栏回单：同一行常出现“账号 ... 账号 ...”，常规标签法容易漏提或把两侧账号混为同一个
@@ -721,7 +787,7 @@ def extract_fields_from_text(
     summary = _transaction_summary_field_only(t_summary)
     currency = _extract_currency(t_currency)
 
-    return payer, payee, payer_account, payee_account, amount, purpose, summary, currency
+    return payer, payee, payee_bank_name, payer_account, payee_account, amount, purpose, summary, currency
 
 
 def _clean_value(value: str) -> str:
@@ -815,7 +881,7 @@ def extract_invoice_by_table_and_text(
         'right': _sanitize_pdf_text('\n'.join(right_parts)),
     }
     profile = detect_bank(scoped['full'][:8000], profiles)
-    payer, payee, payer_account, payee_account, amount, purpose, summary, currency = extract_fields_from_text(scoped, profile)
+    payer, payee, payee_bank_name, payer_account, payee_account, amount, purpose, summary, currency = extract_fields_from_text(scoped, profile)
 
     # 账号缺失时，启用双方案兜底：
     # 方案1 glyph-code 映射，方案2 PyMuPDF 截图 + ddddocr。
@@ -838,6 +904,7 @@ def extract_invoice_by_table_and_text(
 
     result.buyer = payer
     result.payee = payee
+    result.payee_bank_name = payee_bank_name
     result.payer_account = payer_account
     result.payee_account = payee_account
     result.amount = amount
@@ -848,7 +915,7 @@ def extract_invoice_by_table_and_text(
     bank_label = f'{profile.name}({profile.key})' if profile else '通用'
     out_line = (
         f'【解析输出】文件={result.name} | 模板={bank_label} | '
-        f'付款人名称={result.buyer!r} | 收款人名称={result.payee!r} | '
+        f'付款人名称={result.buyer!r} | 收款人名称={result.payee!r} | 收款开户行={result.payee_bank_name!r} | '
         f'付款账号={result.payer_account!r} | '
         f'收款账号={result.payee_account!r} | '
         f'币种={result.currency!r} | '

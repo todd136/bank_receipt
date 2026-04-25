@@ -101,7 +101,7 @@ def load_receipt_assignment_rules(base_path: str) -> dict:
     """
     读取回单分配规则。
     支持两种写法：
-    1) 简单 OR 规则：payer_matches / payee_matches / payer_account_matches / payee_account_matches
+    1) 简单 OR 规则：payer_matches / payee_matches / payee_bank_matches / payer_account_matches / payee_account_matches
     2) and 规则：owner.and = [{by, value, op?}, ...]
     - 文件路径：{base_path}/receipt_assignments.json
     - 结构示例：
@@ -138,6 +138,7 @@ def load_receipt_assignment_rules(base_path: str) -> dict:
                         'owner': owner,
                         'payer_matches': [],
                         'payee_matches': [],
+                        'payee_bank_matches': [],
                         'payer_account_matches': [],
                         'payee_account_matches': [],
                     }
@@ -149,6 +150,8 @@ def load_receipt_assignment_rules(base_path: str) -> dict:
                     owner_map[owner]['payer_matches'].append(match)
                 elif by == 'payee':
                     owner_map[owner]['payee_matches'].append(match)
+                elif by == 'payee_bank':
+                    owner_map[owner]['payee_bank_matches'].append(match)
                 elif by == 'payer_account':
                     owner_map[owner]['payer_account_matches'].append(match)
                 elif by == 'payee_account':
@@ -161,13 +164,14 @@ def load_receipt_assignment_rules(base_path: str) -> dict:
 def _validate_assignment_owners(owners: List[dict]) -> None:
     """
     启动时校验 owner 分配规则。
-    - 支持简单 OR：payer_matches / payee_matches / payer_account_matches / payee_account_matches
+    - 支持简单 OR：payer_matches / payee_matches / payee_bank_matches / payer_account_matches / payee_account_matches
     - 支持 and 组合：and=[{by,value,op?}, ...]
     """
     for idx, owner_cfg in enumerate(owners, start=1):
         owner = str(owner_cfg.get('owner', '')).strip() or f'第{idx}条'
         payer_matches = owner_cfg.get('payer_matches', [])
         payee_matches = owner_cfg.get('payee_matches', [])
+        payee_bank_matches = owner_cfg.get('payee_bank_matches', [])
         payer_account_matches = owner_cfg.get('payer_account_matches', [])
         payee_account_matches = owner_cfg.get('payee_account_matches', [])
         and_conditions = owner_cfg.get('and', [])
@@ -175,6 +179,8 @@ def _validate_assignment_owners(owners: List[dict]) -> None:
             payer_matches = []
         if not isinstance(payee_matches, list):
             payee_matches = []
+        if not isinstance(payee_bank_matches, list):
+            payee_bank_matches = []
         if not isinstance(payer_account_matches, list):
             payer_account_matches = []
         if not isinstance(payee_account_matches, list):
@@ -182,7 +188,7 @@ def _validate_assignment_owners(owners: List[dict]) -> None:
         if not isinstance(and_conditions, list):
             and_conditions = []
 
-        has_simple = any(str(x).strip() for x in payer_matches) or any(str(x).strip() for x in payee_matches) or any(
+        has_simple = any(str(x).strip() for x in payer_matches) or any(str(x).strip() for x in payee_matches) or any(str(x).strip() for x in payee_bank_matches) or any(
             str(x).strip() for x in payer_account_matches
         ) or any(str(x).strip() for x in payee_account_matches)
         has_and = len(and_conditions) > 0
@@ -194,7 +200,7 @@ def _validate_assignment_owners(owners: List[dict]) -> None:
             )
         elif not has_simple and not has_and:
             logging.warning(
-                "分配规则校验: owner='%s' 未配置任何匹配项（payer/payee/payer_account/payee_account/and），该条规则不会生效",
+                "分配规则校验: owner='%s' 未配置任何匹配项（payer/payee/payee_bank/payer_account/payee_account/and），该条规则不会生效",
                 owner,
             )
 
@@ -209,6 +215,7 @@ def _match_condition(
     value,
     payer_v: str,
     payee_v: str,
+    payee_bank_v: str,
     remark_v: str,
     payer_account_v: str,
     payee_account_v: str,
@@ -218,7 +225,7 @@ def _match_condition(
     if not by_v or value is None:
         return False
 
-    if by_v in ('payer', 'payee', 'remark'):
+    if by_v in ('payer', 'payee', 'payee_bank', 'remark'):
         if isinstance(value, list):
             values = [str(v).strip() for v in value if str(v).strip()]
         else:
@@ -226,7 +233,11 @@ def _match_condition(
             values = [one] if one else []
         if not values:
             return False
-        target = payer_v if by_v == 'payer' else (payee_v if by_v == 'payee' else remark_v)
+        target = (
+            payer_v if by_v == 'payer'
+            else (payee_v if by_v == 'payee'
+                  else (payee_bank_v if by_v == 'payee_bank' else remark_v))
+        )
         if op_v in ('eq', 'equals', 'exact'):
             return any(target == v for v in values)
         # contains / contains_any: value 为数组时，任一命中即为真
@@ -249,6 +260,7 @@ def _match_condition(
 def match_receipt_owner(
     payer: str,
     payee: str,
+    payee_bank: str,
     remark: str,
     payer_account: str,
     payee_account: str,
@@ -257,6 +269,7 @@ def match_receipt_owner(
     """按配置顺序匹配财务人员。"""
     payer_v = (payer or '').strip()
     payee_v = (payee or '').strip()
+    payee_bank_v = (payee_bank or '').strip()
     remark_v = (remark or '').strip()
     payer_account_v = _normalize_account(payer_account)
     payee_account_v = _normalize_account(payee_account)
@@ -274,7 +287,7 @@ def match_receipt_owner(
                 by = str(cond.get('by', '')).strip()
                 op = str(cond.get('op', 'contains')).strip()
                 value = cond.get('value', '')
-                if not _match_condition(by, op, value, payer_v, payee_v, remark_v, payer_account_v, payee_account_v):
+                if not _match_condition(by, op, value, payer_v, payee_v, payee_bank_v, remark_v, payer_account_v, payee_account_v):
                     ok = False
                     break
             if ok:
@@ -287,6 +300,9 @@ def match_receipt_owner(
         payee_matches = owner_cfg.get('payee_matches', [])
         if not isinstance(payee_matches, list):
             payee_matches = []
+        payee_bank_matches = owner_cfg.get('payee_bank_matches', [])
+        if not isinstance(payee_bank_matches, list):
+            payee_bank_matches = []
         payer_account_matches = owner_cfg.get('payer_account_matches', [])
         if not isinstance(payer_account_matches, list):
             payer_account_matches = []
@@ -305,6 +321,11 @@ def match_receipt_owner(
                 kw = str(keyword).strip()
                 if kw and payee_v and kw in payee_v:
                     return owner
+        if payee_bank_matches:
+            for keyword in payee_bank_matches:
+                kw = str(keyword).strip()
+                if kw and payee_bank_v and kw in payee_bank_v:
+                    return owner
         if payer_account_matches:
             for match_account in payer_account_matches:
                 rule_account = _normalize_account(str(match_account))
@@ -321,6 +342,7 @@ def match_receipt_owner(
 def explain_unmatched_receipt_owner(
     payer: str,
     payee: str,
+    payee_bank: str,
     remark: str,
     payer_account: str,
     payee_account: str,
@@ -329,6 +351,7 @@ def explain_unmatched_receipt_owner(
     """返回未命中的简要原因，用于日志排查。"""
     payer_v = (payer or '').strip()
     payee_v = (payee or '').strip()
+    payee_bank_v = (payee_bank or '').strip()
     remark_v = (remark or '').strip()
     payer_account_v = _normalize_account(payer_account)
     payee_account_v = _normalize_account(payee_account)
@@ -348,7 +371,7 @@ def explain_unmatched_receipt_owner(
                 by = str(cond.get('by', '')).strip()
                 op = str(cond.get('op', 'contains')).strip()
                 value = cond.get('value', '')
-                ok = _match_condition(by, op, value, payer_v, payee_v, remark_v, payer_account_v, payee_account_v)
+                ok = _match_condition(by, op, value, payer_v, payee_v, payee_bank_v, remark_v, payer_account_v, payee_account_v)
                 if not ok:
                     failed = f"and未命中(by={by}, op={op}, value={value})"
                     break
@@ -365,6 +388,11 @@ def explain_unmatched_receipt_owner(
             kw = str(keyword).strip()
             if kw and payee_v and kw in payee_v:
                 simple_hits.append('payee_matches')
+                break
+        for keyword in owner_cfg.get('payee_bank_matches', []) if isinstance(owner_cfg.get('payee_bank_matches', []), list) else []:
+            kw = str(keyword).strip()
+            if kw and payee_bank_v and kw in payee_bank_v:
+                simple_hits.append('payee_bank_matches')
                 break
         for account in owner_cfg.get('payer_account_matches', []) if isinstance(owner_cfg.get('payer_account_matches', []), list) else []:
             if _normalize_account(str(account)) and _normalize_account(str(account)) == payer_account_v:

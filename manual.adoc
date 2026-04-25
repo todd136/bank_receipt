@@ -57,7 +57,7 @@
 
 1. 在 `owners` 里新增一个对象，填写 `owner`（财务人员名）
 2. 选择规则写法：
-   - 简单规则（OR）：`payer_matches` / `payee_matches` / `payer_account_matches` / `payee_account_matches`
+   - 简单规则（OR）：`payer_matches` / `payee_matches` / `payee_bank_matches` / `payer_account_matches` / `payee_account_matches`
    - 组合规则（AND）：`and`（条件列表）
 3. 同一人员可填写多个关键字/账号（多对一）
 4. 保存后先用 1～2 张回单验证，再批量使用
@@ -84,10 +84,15 @@
       "payee_matches": ["收款人名称1", "收款人名称2"]
     },
     {
+      "owner": "孙八",
+      "payee_bank_matches": ["交通银行北京回龙观支行", "招商银行北京东直门支行"]
+    },
+    {
       "owner": "赵六",
       "and": [
         { "by": "payer", "op": "contains", "value": "康彦鹏" },
-        { "by": "payee_account", "op": "equals", "value": "341556012761" }
+        { "by": "payee_account", "op": "equals", "value": "341556012761" },
+        { "by": "payee_bank", "op": "contains", "value": ["北京回龙观支行", "北京东直门支行"] }
       ]
     }
   ]
@@ -101,13 +106,14 @@
 * `owner`：财务人员文件夹名
 * `payer_matches`：按“付款人名称”匹配（包含任一关键字即命中）
 * `payee_matches`：按“收款人名称”匹配（包含任一关键字即命中）
-* `payer_account_matches`：按“付款账号”匹配（去除非数字后相等即命中）
-* `payee_account_matches`：按“收款账号”匹配（去除非数字后相等即命中）
+* `payee_bank_matches`：按“收款人开户行名称”匹配（包含任一关键字即命中）
+* `payer_account_matches`：按“付款账号”匹配（去除非字母数字后相等即命中，不区分大小写）
+* `payee_account_matches`：按“收款账号”匹配（去除非字母数字后相等即命中，不区分大小写）
 * `and`：AND 条件列表；所有条件都满足才命中
 ** 条件结构：`{ "by": "...", "op": "...", "value": "..." }`
-** `by` 支持：`payer` / `payee` / `payer_account` / `payee_account`
+** `by` 支持：`payer` / `payee` / `payee_bank` / `remark` / `payer_account` / `payee_account`
 ** `op` 支持：
-*** `payer`：`contains`（默认）或 `equals`
+*** `payer` / `payee` / `payee_bank` / `remark`：`contains`（默认）或 `equals`
 **** `contains` 时，`value` 可写字符串或数组；若是数组，任一命中即该条件为真
 *** `payer_account` / `payee_account`：`equals`（按账号相等）
 * 若同一 owner 同时配置了简单规则与 `and`，程序优先按 `and` 匹配

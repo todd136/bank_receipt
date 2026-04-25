@@ -68,6 +68,7 @@ class ReceiptProcessor:
             owner = match_receipt_owner(
                 invoice.buyer,
                 invoice.payee,
+                invoice.payee_bank_name,
                 f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),
                 invoice.payer_account,
                 invoice.payee_account,
@@ -84,16 +85,18 @@ class ReceiptProcessor:
                 reason = explain_unmatched_receipt_owner(
                     invoice.buyer,
                     invoice.payee,
+                    invoice.payee_bank_name,
                     f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),
                     invoice.payer_account,
                     invoice.payee_account,
                     self.assignment_cfg.get('owners', []),
                 )
                 logging.info(
-                    "回单未分配: file='%s', payer=%r, payee=%r, payer_account=%r, payee_account=%r, remark=%r, reason=%s",
+                    "回单未分配: file='%s', payer=%r, payee=%r, payee_bank=%r, payer_account=%r, payee_account=%r, remark=%r, reason=%s",
                     Path(renamed_path).name,
                     invoice.buyer,
                     invoice.payee,
+                    invoice.payee_bank_name,
                     invoice.payer_account,
                     invoice.payee_account,
                     f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),

@@ -12,6 +12,7 @@ class Receipt:
     date: str = ""  # 保留兼容字段
     buyer: str = ""  # 付款人名称
     payee: str = ""  # 收款人名称
+    payee_bank_name: str = ""  # 收款人开户行名称
     payer_account: str = ""  # 付款账号
     payee_account: str = ""  # 收款账号
     invoice_type: str = ""  # 用途

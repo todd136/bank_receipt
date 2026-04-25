@@ -26,7 +26,7 @@ def main():
     setup_logger(
         base_path,
         global_level=logging.INFO,
-        module_levels={'src.bank_receipt': logging.DEBUG}
+        module_levels={'src.bank_receipt': logging.INFO}
     )
 
     logging.info(f'开始在主路径： {str(base_path)} 下处理银行回单...')

@@ -101,6 +101,12 @@ def _score_account(v: str) -> int:
         score += 120
     elif 13 <= n <= 24:
         score += 60
+    # 前 10 位信息量：更分散通常更可信（可区分 11000... 与 11006... 这类误差）
+    prefix = d[:10]
+    score += len(set(prefix)) * 3
+    # 前缀出现过长零串通常是误识别（保持轻惩罚，避免误伤）
+    if re.search(r"0{3,}", d[:8]):
+        score -= 24
     # 连续重复数字较多时扣分，防止 OCR 噪声
     if re.search(r"(\d)\1{5,}", d):
         score -= 40
@@ -306,16 +312,33 @@ def _parse_glyph_map_cfg(data: Dict[str, Any], template_key: str) -> Dict[str, D
     return merged
 
 
-def _best_digit_from_learning(entry: Any) -> str:
+def _best_digit_from_learning(
+    entry: Any,
+    min_count: int = 5,
+    min_ratio: float = 0.75,
+    lead_factor: float = 2.0,
+) -> str:
     if not isinstance(entry, dict):
         return ""
     pairs = [(str(k), int(v)) for k, v in entry.items() if isinstance(v, int)]
     if not pairs:
         return ""
     pairs.sort(key=lambda x: x[1], reverse=True)
-    if len(pairs) > 1 and pairs[0][1] == pairs[1][1]:
+    top_digit, top_count = pairs[0]
+    if top_count < min_count:
         return ""
-    return pairs[0][0]
+    if len(pairs) > 1:
+        second_count = pairs[1][1]
+        if top_count == second_count:
+            return ""
+        if second_count > 0 and top_count < int(second_count * lead_factor):
+            return ""
+    total = sum(c for _, c in pairs)
+    if total <= 0:
+        return ""
+    if (top_count / float(total)) < min_ratio:
+        return ""
+    return top_digit
 
 
 def _load_learning_map(base_path: Optional[str], template_key: str) -> Dict[str, Dict[str, str]]:
@@ -326,17 +349,9 @@ def _load_learning_map(base_path: Optional[str], template_key: str) -> Dict[str,
     out: Dict[str, Dict[str, str]] = {}
     if not data:
         return out
-    gm = data.get("global", {})
-    if isinstance(gm, dict):
-        for font, mp in gm.items():
-            if isinstance(mp, dict):
-                for gid, entry in mp.items():
-                    d = _best_digit_from_learning(entry)
-                    if d:
-                        out.setdefault(str(font), {})[str(gid).lower()] = d
-    tm = data.get("templates", {})
-    if isinstance(tm, dict) and template_key and template_key in tm:
-        one = tm.get(template_key, {})
+    # 模板优先：先加载 template，再按需用 global 补缺，避免 global 污染当前模板
+    if isinstance(data.get("templates", {}), dict) and template_key and template_key in data.get("templates", {}):
+        one = data["templates"].get(template_key, {})
         if isinstance(one, dict):
             for font, mp in one.items():
                 if isinstance(mp, dict):
@@ -344,6 +359,18 @@ def _load_learning_map(base_path: Optional[str], template_key: str) -> Dict[str,
                         d = _best_digit_from_learning(entry)
                         if d:
                             out.setdefault(str(font), {})[str(gid).lower()] = d
+    gm = data.get("global", {})
+    if isinstance(gm, dict):
+        for font, mp in gm.items():
+            if isinstance(mp, dict):
+                for gid, entry in mp.items():
+                    d = _best_digit_from_learning(entry)
+                    if d:
+                        f = str(font)
+                        g = str(gid).lower()
+                        out.setdefault(f, {})
+                        if g not in out[f]:
+                            out[f][g] = d
     return out
 
 
