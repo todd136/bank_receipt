@@ -13,6 +13,7 @@ from .file_service import (
     rename_receipt_file,
     load_receipt_assignment_rules,
     match_receipt_owner,
+    explain_unmatched_receipt_owner,
     move_receipt_to_owner_folder,
 )
 
@@ -78,6 +79,25 @@ class ReceiptProcessor:
                     self.base_path,
                     owner,
                     self.assignment_cfg.get('target_root', '财务分配'),
+                )
+            else:
+                reason = explain_unmatched_receipt_owner(
+                    invoice.buyer,
+                    invoice.payee,
+                    f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),
+                    invoice.payer_account,
+                    invoice.payee_account,
+                    self.assignment_cfg.get('owners', []),
+                )
+                logging.info(
+                    "回单未分配: file='%s', payer=%r, payee=%r, payer_account=%r, payee_account=%r, remark=%r, reason=%s",
+                    Path(renamed_path).name,
+                    invoice.buyer,
+                    invoice.payee,
+                    invoice.payer_account,
+                    invoice.payee_account,
+                    f'{invoice.invoice_type} {invoice.transaction_summary}'.strip(),
+                    reason,
                 )
 
             invoice.name = Path(renamed_path).name

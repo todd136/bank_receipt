@@ -318,6 +318,69 @@ def match_receipt_owner(
     return None
 
 
+def explain_unmatched_receipt_owner(
+    payer: str,
+    payee: str,
+    remark: str,
+    payer_account: str,
+    payee_account: str,
+    owners: List[dict],
+) -> str:
+    """返回未命中的简要原因，用于日志排查。"""
+    payer_v = (payer or '').strip()
+    payee_v = (payee or '').strip()
+    remark_v = (remark or '').strip()
+    payer_account_v = _normalize_account(payer_account)
+    payee_account_v = _normalize_account(payee_account)
+    reasons: List[str] = []
+
+    for owner_cfg in owners:
+        owner = str(owner_cfg.get('owner', '')).strip()
+        if not owner:
+            continue
+        and_conditions = owner_cfg.get('and', [])
+        if isinstance(and_conditions, list) and and_conditions:
+            failed = None
+            for cond in and_conditions:
+                if not isinstance(cond, dict):
+                    failed = '条件项非对象'
+                    break
+                by = str(cond.get('by', '')).strip()
+                op = str(cond.get('op', 'contains')).strip()
+                value = cond.get('value', '')
+                ok = _match_condition(by, op, value, payer_v, payee_v, remark_v, payer_account_v, payee_account_v)
+                if not ok:
+                    failed = f"and未命中(by={by}, op={op}, value={value})"
+                    break
+            reasons.append(f"{owner}: {failed or 'and未命中'}")
+            continue
+
+        simple_hits: List[str] = []
+        for keyword in owner_cfg.get('payer_matches', []) if isinstance(owner_cfg.get('payer_matches', []), list) else []:
+            kw = str(keyword).strip()
+            if kw and payer_v and kw in payer_v:
+                simple_hits.append('payer_matches')
+                break
+        for keyword in owner_cfg.get('payee_matches', []) if isinstance(owner_cfg.get('payee_matches', []), list) else []:
+            kw = str(keyword).strip()
+            if kw and payee_v and kw in payee_v:
+                simple_hits.append('payee_matches')
+                break
+        for account in owner_cfg.get('payer_account_matches', []) if isinstance(owner_cfg.get('payer_account_matches', []), list) else []:
+            if _normalize_account(str(account)) and _normalize_account(str(account)) == payer_account_v:
+                simple_hits.append('payer_account_matches')
+                break
+        for account in owner_cfg.get('payee_account_matches', []) if isinstance(owner_cfg.get('payee_account_matches', []), list) else []:
+            if _normalize_account(str(account)) and _normalize_account(str(account)) == payee_account_v:
+                simple_hits.append('payee_account_matches')
+                break
+        reasons.append(f"{owner}: 简单规则未命中" if not simple_hits else f"{owner}: 命中{','.join(simple_hits)}")
+
+    if not reasons:
+        return 'owners 为空或均无有效规则'
+    return '; '.join(reasons[:6])
+
+
 def move_receipt_to_owner_folder(
         source_path: str,
         base_path: str,
