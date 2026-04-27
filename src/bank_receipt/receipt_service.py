@@ -593,6 +593,23 @@ def _extract_payer_account(text: str) -> str:
 
 def _extract_payee_account(text: str) -> str:
     text = _sanitize_pdf_text(text)
+    # 建行等双栏场景：同一行常为“账 号 A 账 号 B”，右侧为收款账号。
+    # 先显式取第二个账号，避免普通“收款人账号”标签缺失时回落到 OCR/短串误识别。
+    for pat in (
+        re.compile(
+            r'账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,}?)\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})',
+            re.MULTILINE,
+        ),
+        re.compile(
+            r'款\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,}?)\s*款\s*账\s*号\s*[:：]?\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})',
+            re.MULTILINE,
+        ),
+    ):
+        m = pat.search(text)
+        if m:
+            right = re.sub(r'[^A-Za-z0-9\-]+', '', (m.group(2) or '')).upper()
+            if right:
+                return right
     raw = _first_match(_PAYEE_ACCOUNT_GENERIC, text)
     if not raw:
         return ''
@@ -776,6 +793,20 @@ def extract_fields_from_text(
             )
         ):
             payee_account = dual_payee or payee_account
+        # 防止“错误值锁死”：
+        # 当前收款账号非空但明显偏短，且双栏右侧更完整时，允许以双栏右侧纠正。
+        elif (
+            dual_payee
+            and payee_account
+            and dual_payee != payee_account
+            and (
+                # 当前值长度明显短于双栏右侧（如 '271095' vs '1105...')
+                len(payee_account) + 6 <= len(dual_payee)
+                # 或当前值恰好等于左侧付款账号，双栏左右不一致
+                or (dual_payer and payee_account == dual_payer and dual_payer != dual_payee)
+            )
+        ):
+            payee_account = dual_payee
     payer_account, payee_account = _rebalance_accounts_for_generic_layout(
         payer,
         payee,
