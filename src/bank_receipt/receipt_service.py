@@ -461,6 +461,8 @@ def _clean_payer(raw: str) -> str:
     # 建行等：字间带空格时「收 款 人」
     if re.search(r'收\s*款\s*人', s):
         s = re.split(r'收\s*款\s*人', s, maxsplit=1)[0].strip()
+    # 中文名称里的字间空格通常是排版噪声，合并掉（保留英文/数字间空格）
+    s = re.sub(r'(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])', '', s)
     # 去掉常见尾随标签碎片
     s = re.split(r'\s{2,}|\t', s)[0].strip()
     # 去掉后续拼接字段（常见于“整行连在一起”）
