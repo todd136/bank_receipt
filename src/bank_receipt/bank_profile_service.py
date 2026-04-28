@@ -11,8 +11,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .bank_fields import section_contains_keywords
-
 logger = logging.getLogger(__name__)
 
 # 与项目根目录 bank_templates.json 保持一致；base_path 下无文件时使用此默认
@@ -109,10 +107,6 @@ class BankProfile:
     payer_patterns: List[re.Pattern]
 
 
-def _blob_has_any(blob: str, needles: Tuple[str, ...]) -> bool:
-    return any(n in blob for n in needles)
-
-
 def _normalize_layout(layout: Optional[str]) -> str:
     l = (layout or "horizontal").strip().lower()
     if l in ("horizontal", "vertical"):
@@ -199,38 +193,10 @@ def bank_profiles_for_base(base_path: Optional[str], payer_patterns: List[re.Pat
     )
 
 
-def _match_detect_rule(text: str, rule: Dict[str, Any]) -> bool:
-    rtype = (rule or {}).get("type")
-    if rtype == "contains_any":
-        return _blob_has_any(text, tuple(rule.get("keywords", [])))
-    if rtype == "section_contains":
-        if rule.get("start_regex"):
-            m_start = re.search(rule.get("start_regex", ""), text)
-            if not m_start:
-                return False
-            tail = text[m_start.end() :]
-            m_end = re.search(rule.get("end_regex", ""), tail)
-            if not m_end:
-                return False
-            segment = tail[: m_end.start()]
-            m_anchor = re.search(rule.get("anchor_regex", ""), segment)
-            if not m_anchor:
-                return False
-            after_anchor = segment[m_anchor.end() :]
-            return _blob_has_any(after_anchor, tuple(rule.get("keywords_after_anchor", [])))
-        return section_contains_keywords(
-            text,
-            rule["start_label"],
-            rule.get("end_labels", []),
-            rule["anchor_label"],
-            rule.get("keywords_after_anchor", []),
-        )
-    return False
-
-
 def detect_bank(text: str, profiles: Tuple[BankProfile, ...]) -> Optional[BankProfile]:
-    for profile in profiles:
-        if _match_detect_rule(text, profile.detect_rule):
-            logger.debug("识别银行模板: %s (%s)", profile.name, profile.key)
-            return profile
-    return None
+    """
+    兼容旧调用入口：实际识别逻辑已迁移到 bank_detect_service.py。
+    """
+    from .bank_detect_service import detect_bank as _detect_bank_impl
+
+    return _detect_bank_impl(text, profiles)

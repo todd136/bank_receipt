@@ -5,7 +5,7 @@
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["中国建设银行", "建设银行"]
+      "keywords": ["中国建设银行单位客户专用回单"]
     },
     "payer": { "strategy": "pair_between_labels", "scope": "full" }
   },
@@ -15,7 +15,7 @@
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["广发银行", "广发银行客户回单"]
+      "keywords": ["www.cgbchina.com.cn", "广发银行客户回单"]
     },
     "payer": {
       "strategy": "label_value",
@@ -30,7 +30,10 @@
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["招商银行", "CHINA MERCHANTS"]
+      "keywords": [
+        "cmbchina.com",
+        "CHINA MERCHANTS"
+      ]
     },
     "payer": { "strategy": "generic_first", "scope": "full" }
   },
@@ -49,11 +52,8 @@
     "name": "交通银行",
     "layout": "vertical",
     "detect": {
-      "type": "section_contains",
-      "start_label": "收款人名称",
-      "end_labels": ["付款人账号", "付款人名称"],
-      "anchor_label": "开户行名称",
-      "keywords_after_anchor": ["交通银行"]
+      "type": "contains_any",
+      "keywords": ["ebank.bankcomm.cn"]
     },
     "payer": {
       "strategy": "label_value",

@@ -12,7 +12,8 @@ from typing import Dict, List, Optional, Tuple
 import pdfplumber
 
 from .bank_fields import label_flex_pattern, pick_scoped_text
-from .bank_profile_service import BankProfile, _normalize_layout, bank_profiles_for_base, detect_bank
+from .bank_detect_service import detect_bank
+from .bank_profile_service import BankProfile, _normalize_layout, bank_profiles_for_base
 from .pymupdf_service import recover_accounts_by_dual_strategy
 from .receipt import Receipt
 from .receipt_layout import build_page_scoped_texts
@@ -731,6 +732,7 @@ def extract_fields_from_text(
 ) -> Tuple[str, str, str, str, str, str, str, str, str]:
     """scoped 含 full / left / right，由 bank_templates.json 的 scope 选择栏位。"""
     payer_ps = profile.payer_patterns if profile else _PAYER_GENERIC
+    t_full = _sanitize_pdf_text(scoped.get('full', ''))
 
     payer_cfg = profile.payer if profile else {'strategy': 'generic_first', 'scope': 'full'}
     layout = _normalize_layout(profile.layout if profile else 'horizontal')
@@ -771,8 +773,15 @@ def extract_fields_from_text(
     else:
         payer = _best_payer_from_patterns(payer_ps, t_payer)
 
-    t_full = _sanitize_pdf_text(scoped.get('full', ''))
+    # 模板按 left/right 取值时，若未命中，回退到 full 做一次通用提取，避免“局部 scope 漏掉付款人”。
+    if not payer and payer_scope != 'full':
+        payer = _best_payer_from_patterns(payer_ps or _PAYER_GENERIC, t_full)
+        if not payer:
+            payer = _best_payer_from_patterns(_PAYER_GENERIC, t_full)
+
     payee = _extract_payee_name(t_payer)
+    if not payee and payer_scope != 'full':
+        payee = _extract_payee_name(t_full)
     payee_bank_name = _extract_payee_bank_name(t_full, payee)
     payer_account = _extract_payer_account(t_payer)
     payee_account = _extract_payee_account(t_payer)
