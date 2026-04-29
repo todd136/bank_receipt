@@ -260,9 +260,16 @@ def _purpose_usage_field_only(text: str) -> str:
     无该栏或值为空则返回空；不使用摘要、附言、备注、交易摘要等。
     """
     text = _sanitize_pdf_text(text)
-    m = re.search(r'结算方式\s+\S+\s+用\s*途\s+(\S+)', text)
+    # 建行常见同行格式：结算方式 转账 用途 自动提现 2026-04-26
+    # 用途值可能含空格（如附带日期），不能用 \S+ 只取首段。
+    m = re.search(r'结算方式\s+\S+\s+用\s*途\s+([^\n\r]+)', text)
     if m:
         v = (m.group(1) or '').strip()
+        for stop in ('附言', '摘要', '备注', '金额', '回单编号'):
+            m_stop = re.search(label_flex_pattern(stop) + r'\s*[:：]', v)
+            if m_stop:
+                v = v[:m_stop.start()].strip()
+                break
         if v:
             return _clean_value(v)
     for pat in (
