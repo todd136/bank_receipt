@@ -43,7 +43,7 @@
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["中国银行", "BANK OF CHINA", "国内支付业务收款回单"]
+      "keywords": ["BANK OF CHINA", "国内支付业务收款回单"]
     },
     "payer": { "strategy": "generic_first", "scope": "full" }
   },
@@ -68,7 +68,7 @@
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["兴业银行网上银行客户回单", "兴业银行利息回单", "兴业银行"]
+      "keywords": ["兴业银行网上银行客户回单", "兴业银行利息回单"]
     },
     "payer": {
       "strategy": "label_value",
