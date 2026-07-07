@@ -142,14 +142,37 @@ base_path = '/Volumes/share/temp/bank_receipt'  # 改为你的回单目录
 
 部分函数名（如 `extract_invoice_by_table_and_text`）为沿用命名，当前业务为银行回单。
 
-== Nuitka 打包（Windows）
+== Windows 打包（PyInstaller，推荐）
 
 在项目根目录执行：
 
-  .\build.bat
+[source,bat]
+----
+pip install -r requirements.txt
+pip install pyinstaller
+.\build_pyinstaller.bat
+----
 
-或手动执行（请按本机路径调整；入口为 `src\bank_receipt\main.py`）：
+产物目录：
 
-  python -m nuitka --standalone --onefile ... --output-filename=bank_receipt src\bank_receipt\main.py
+- 可执行文件：`dist\bank_receipt\bank_receipt.exe`
+- 依赖目录：`dist\bank_receipt\runtime\`（`.dll` / `.pyd` 等）
 
-（`build.bat` 若仍为旧参数，请以仓库内脚本为准或按上式自行替换产品名与图标路径。）
+发布时请将 `dist\bank_receipt\` 整个目录一起拷贝；`exe` 与 `runtime` 需保持相对位置不变。
+
+脚本内主要配置项（`build_pyinstaller.bat` 顶部）：`APP_NAME`、`APP_VERSION`、`ICON_FILE`、`ENTRY_SCRIPT`、`VERSION_FILE`。
+
+GitHub Actions 自动构建：推送 `main` / `master` 分支会触发 workflow `.github/workflows/build-windows-pyinstaller.yml`。
+
+== Nuitka 打包（备用）
+
+`build.bat` 为 Nuitka 单文件打包脚本，仅作备用；CI 需手动触发 `.github/workflows/build-windows.yml`（`workflow_dispatch`）。
+
+在项目根目录执行：
+
+[source,bat]
+----
+pip install -r requirements.txt
+pip install "nuitka[onefile]"
+.\build.bat
+----
