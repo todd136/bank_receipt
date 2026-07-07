@@ -335,6 +335,24 @@ def _transaction_summary_field_only(text: str) -> str:
     return chunk
 
 
+def _extract_header_date(text: str) -> str:
+    """
+    提取表头区「币别/币种 … 流水号」之间的日期。
+    典型格式：币别：人民币2026年04月28日流水号：1100019007CHBBJ0A2S
+    """
+    text = _sanitize_pdf_text(text)
+    for pat in (
+        r'币\s*别\s*[:：]?\s*[^\n\r]*?(\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)\s*流\s*水\s*号',
+        r'币\s*种\s*[:：]?\s*[^\n\r]*?(\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日)\s*流\s*水\s*号',
+    ):
+        m = re.search(pat, text)
+        if m:
+            raw = (m.group(1) or '').strip()
+            if raw:
+                return raw
+    return ''
+
+
 def _normalize_currency_value(raw: str) -> str:
     v = _clean_value(raw).upper().replace(' ', '')
     if not v:
@@ -962,6 +980,7 @@ def extract_invoice_by_table_and_text(
     result.invoice_type = purpose
     result.transaction_summary = summary
     result.currency = currency
+    result.date = _extract_header_date(scoped['full'])
 
     bank_label = f'{profile.name}({profile.key})' if profile else '通用'
     out_line = (
@@ -970,6 +989,7 @@ def extract_invoice_by_table_and_text(
         f'付款账号={result.payer_account!r} | '
         f'收款账号={result.payee_account!r} | '
         f'币种={result.currency!r} | '
+        f'表头日期={result.date!r} | '
         f'小写金额={result.amount!r} | 用途={result.invoice_type!r} | '
         f'交易摘要={result.transaction_summary!r}'
     )

@@ -37,6 +37,9 @@ def _sanitize_filename_part(value: str, default: str) -> str:
     return v or default
 
 
+_DONGHUAN_PARKING_PURPOSE = '东环广场机动车停车场'
+
+
 def _currency_to_symbol(currency: str) -> str:
     c = (currency or '').strip()
     if c == '美元':
@@ -54,9 +57,11 @@ def rename_receipt_file(
     currency: str,
     purpose: str,
     transaction_summary: str = '',
+    header_date: str = '',
 ) -> str:
     """
     将回单重命名为：付款人名称_用途_交易摘要_货币符号+小写金额.pdf。
+    若用途含「东环广场机动车停车场」且能读取表头日期，则在金额前追加日期段。
     若目标名已存在，则自动追加序号后缀避免覆盖。
     返回新文件的完整路径；若无需重命名，返回原路径。
     """
@@ -80,6 +85,9 @@ def rename_receipt_file(
         base_parts.append(_sanitize_filename_part(purpose_raw, '未知用途'))
     if summary_raw:
         base_parts.append(_sanitize_filename_part(summary_raw, '未知交易摘要'))
+    date_raw = (header_date or '').strip()
+    if _DONGHUAN_PARKING_PURPOSE in purpose_raw and date_raw:
+        base_parts.append(_sanitize_filename_part(date_raw, '未知日期'))
     base_parts.append(f'{currency_symbol}{amount_part}')
     base_name = '_'.join(base_parts)
 
