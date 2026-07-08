@@ -65,6 +65,7 @@ class ReceiptProcessor:
                 invoice.invoice_type,
                 invoice.transaction_summary,
                 invoice.date,
+                invoice.bank_key,
             )
             owner = match_receipt_owner(
                 invoice.buyer,

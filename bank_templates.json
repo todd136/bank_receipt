@@ -1,11 +1,26 @@
 [
   {
+    "key": "ccb_fee",
+    "name": "中国建设银行(手续费)",
+    "layout": "vertical",
+    "detect": {
+      "type": "contains_all",
+      "keywords": [
+        "工本费/转账汇款手续费/手续费",
+        "中国建设银行单位客户专用回单"
+      ]
+    },
+    "payer": { "strategy": "ccb_fee_table", "scope": "full" }
+  },
+  {
     "key": "ccb",
     "name": "中国建设银行",
     "layout": "horizontal",
     "detect": {
       "type": "contains_any",
-      "keywords": ["中国建设银行单位客户专用回单"]
+      "keywords": [
+        "中国建设银行单位客户专用回单"
+      ]
     },
     "payer": { "strategy": "pair_between_labels", "scope": "full" }
   },

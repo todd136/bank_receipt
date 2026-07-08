@@ -37,7 +37,26 @@ def _sanitize_filename_part(value: str, default: str) -> str:
     return v or default
 
 
+_CCB_BANK_KEYS = frozenset({'ccb', 'ccb_fee'})
 _DONGHUAN_PARKING_PURPOSE = '东环广场机动车停车场'
+_CCB_SETTLEMENT_PAYER = '待清算间联商户消费款户'
+
+
+def _is_ccb_bank_key(bank_key: str) -> bool:
+    return (bank_key or '').strip().lower() in _CCB_BANK_KEYS
+
+
+def _should_append_ccb_header_date(bank_key: str, payer: str, purpose: str) -> bool:
+    """建行回单：特定用途/付款人场景下，文件名追加表头日期。"""
+    if not _is_ccb_bank_key(bank_key):
+        return False
+    payer_v = (payer or '').strip()
+    purpose_v = (purpose or '').strip()
+    if _DONGHUAN_PARKING_PURPOSE in purpose_v:
+        return True
+    if _CCB_SETTLEMENT_PAYER in payer_v:
+        return True
+    return False
 
 
 def _currency_to_symbol(currency: str) -> str:
@@ -58,10 +77,12 @@ def rename_receipt_file(
     purpose: str,
     transaction_summary: str = '',
     header_date: str = '',
+    bank_key: str = '',
 ) -> str:
     """
     将回单重命名为：付款人名称_用途_交易摘要_货币符号+小写金额.pdf。
-    若用途含「东环广场机动车停车场」且能读取表头日期，则在金额前追加日期段。
+    建行模板下，若用途含「东环广场机动车停车场」或付款人含「待清算间联商户消费款户」，
+    且能读取表头日期，则在金额前追加日期段。
     若目标名已存在，则自动追加序号后缀避免覆盖。
     返回新文件的完整路径；若无需重命名，返回原路径。
     """
@@ -86,8 +107,10 @@ def rename_receipt_file(
     if summary_raw:
         base_parts.append(_sanitize_filename_part(summary_raw, '未知交易摘要'))
     date_raw = (header_date or '').strip()
-    if _DONGHUAN_PARKING_PURPOSE in purpose_raw and date_raw:
-        base_parts.append(_sanitize_filename_part(date_raw, '未知日期'))
+    if _should_append_ccb_header_date(bank_key, payer_raw, purpose_raw) and date_raw:
+        date_part = _sanitize_filename_part(date_raw, '')
+        if date_part:
+            base_parts.append(date_part)
     base_parts.append(f'{currency_symbol}{amount_part}')
     base_name = '_'.join(base_parts)
 

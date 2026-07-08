@@ -9,7 +9,8 @@ class Receipt:
     """银行回单结构（沿用 Invoice 命名以保持兼容）"""
     name: str = ""  # 回单文件名
     code: str = ""  # 回单唯一标识（默认文件名）
-    date: str = ""  # 保留兼容字段
+    date: str = ""  # 表头日期（建行特定场景用于重命名）
+    bank_key: str = ""  # 识别到的银行模板 key（如 ccb/cmb）
     buyer: str = ""  # 付款人名称
     payee: str = ""  # 收款人名称
     payee_bank_name: str = ""  # 收款人开户行名称

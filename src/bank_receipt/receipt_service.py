@@ -738,6 +738,74 @@ def _extract_payee_bank_name(text: str, payee: str = '') -> str:
     return ''
 
 
+def _extract_ccb_fee_table_fields(text: str) -> Dict[str, str]:
+    """
+    建行「单位客户专用回单」手续费表格版式：
+    - 户名 / 账号
+    - 表格含「工本费/转账汇款手续费/手续费」列
+    - 项目名称、合计金额
+    """
+    text = _sanitize_pdf_text(text)
+    out = {'payer': '', 'payer_account': '', 'amount': '', 'purpose': ''}
+
+    m = re.search(
+        r'户\s*名\s*[:：]\s*(.+?)\s*账\s*号\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})',
+        text,
+        re.DOTALL,
+    )
+    if m:
+        out['payer'] = _clean_payer(m.group(1)) or _clean_value(m.group(1))
+        acct = re.sub(r'[^A-Za-z0-9\-]+', '', m.group(2)).upper()
+        if acct:
+            out['payer_account'] = acct
+    else:
+        m_name = re.search(r'户\s*名\s*[:：]\s*([^\n\r]+)', text)
+        if m_name:
+            out['payer'] = _clean_payer(m_name.group(1)) or _clean_value(m_name.group(1))
+        m_acct = re.search(r'账\s*号\s*[:：]\s*([A-Za-z0-9][A-Za-z0-9\-\s]{5,})', text)
+        if m_acct:
+            acct = re.sub(r'[^A-Za-z0-9\-]+', '', m_acct.group(1)).upper()
+            if acct:
+                out['payer_account'] = acct
+
+    lines = [ln.strip() for ln in text.splitlines() if ln and ln.strip()]
+    fee_header_idx = -1
+    for i, ln in enumerate(lines):
+        if '工本费/转账汇款手续费/手续费' in ln:
+            fee_header_idx = i
+            break
+    if fee_header_idx >= 0:
+        for ln in lines[fee_header_idx + 1: fee_header_idx + 6]:
+            if not ln or '合计' in ln or '项目名称' in ln:
+                if '合计' in ln:
+                    break
+                continue
+            # 去掉行尾金额列（人民币0.80 / ¥0.80）
+            purpose_raw = re.split(r'(?:人民币|[¥￥])\s*[\d,]+(?:\.\d{1,2})?', ln)[0].strip()
+            purpose_raw = _clean_value(purpose_raw)
+            if purpose_raw and len(purpose_raw) >= 4:
+                out['purpose'] = purpose_raw
+                break
+
+    for pat in (
+        r'合\s*计\s*金\s*额[\s\S]{0,160}?[（(]\s*小\s*写\s*[）)]\s*[¥￥]?\s*([\d,]+(?:\.\d{1,2})?)',
+        r'合\s*计\s*金\s*额[\s\S]{0,160}?[¥￥]\s*([\d,]+(?:\.\d{1,2})?)',
+        r'合\s*计\s*金\s*额[\s\S]{0,160}?(\d+(?:\.\d{1,2})?)\s*$',
+    ):
+        m = re.search(pat, text, re.MULTILINE)
+        if m:
+            amt = _normalize_amount(m.group(1))
+            if amt:
+                out['amount'] = amt
+                break
+
+    return out
+
+
+def _is_ccb_bank_key(bank_key: str) -> bool:
+    return (bank_key or '').strip().lower() in ('ccb', 'ccb_fee')
+
+
 def _rebalance_accounts_for_generic_layout(
     payer: str,
     payee: str,
@@ -774,11 +842,25 @@ def extract_fields_from_text(
     t_currency = _sanitize_pdf_text(pick_scoped_text(scoped, 'full'))
 
     raw_payer_st = payer_cfg.get('strategy', 'generic_first')
+    fee_table_mode = raw_payer_st == 'ccb_fee_table'
     payer_st = {
         'ccb_fullname_first': 'pair_between_labels',
         'cgb_line_first': 'label_value',
         'bcm_line_first': 'label_value',
     }.get(raw_payer_st, raw_payer_st)
+
+    if fee_table_mode:
+        fee_fields = _extract_ccb_fee_table_fields(t_full)
+        payer = fee_fields.get('payer', '')
+        payer_account = fee_fields.get('payer_account', '')
+        payee = ''
+        payee_bank_name = ''
+        payee_account = ''
+        amount = fee_fields.get('amount', '') or _extract_amount_regex_then_upper(t_amount)
+        purpose = fee_fields.get('purpose', '') or _purpose_usage_field_only(t_purpose)
+        summary = _transaction_summary_field_only(t_summary)
+        currency = _extract_currency(t_currency)
+        return payer, payee, payee_bank_name, payer_account, payee_account, amount, purpose, summary, currency
 
     if payer_st == 'pair_between_labels':
         payer = _clean_payer(_payer_from_ccb_fullname(t_payer))
@@ -980,7 +1062,12 @@ def extract_invoice_by_table_and_text(
     result.invoice_type = purpose
     result.transaction_summary = summary
     result.currency = currency
-    result.date = _extract_header_date(scoped['full'])
+    result.bank_key = profile.key if profile else ''
+    # 表头日期提取：暂仅建设银行模板使用（含手续费表格版式）
+    if profile and _is_ccb_bank_key(profile.key):
+        result.date = _extract_header_date(scoped['full'])
+    else:
+        result.date = ''
 
     bank_label = f'{profile.name}({profile.key})' if profile else '通用'
     out_line = (

@@ -24,6 +24,16 @@ def _find_line_matches(lines: List[str], keyword: str) -> List[str]:
     return [ln for ln in lines if keyword in ln]
 
 
+def _score_contains_all(text: str, rule: Dict[str, object]) -> int:
+    """keywords 中每一项都必须出现；全部命中后按 contains_any 规则计分。"""
+    keywords = tuple(str(k).strip() for k in (rule or {}).get("keywords", []) if str(k).strip())
+    if not keywords:
+        return 0
+    if not all(kw in text for kw in keywords):
+        return 0
+    return _score_contains_any(text, rule)
+
+
 def _score_contains_any(text: str, rule: Dict[str, object]) -> int:
     """
     contains_any 改为评分制，降低“开户行字段误命中”：
@@ -66,6 +76,8 @@ def _score_contains_any(text: str, rule: Dict[str, object]) -> int:
 
 def _match_detect_rule(text: str, rule: Dict[str, object]) -> bool:
     rtype = (rule or {}).get("type")
+    if rtype == "contains_all":
+        return _score_contains_all(text, rule) >= 35
     if rtype == "contains_any":
         return _score_contains_any(text, rule) >= 35
     if rtype == "section_contains":
@@ -97,7 +109,9 @@ def _score_profile(text: str, profile: BankProfile) -> int:
     rule = profile.detect_rule or {}
     rtype = rule.get("type")
     score = 0
-    if rtype == "contains_any":
+    if rtype == "contains_all":
+        score = _score_contains_all(text, rule)
+    elif rtype == "contains_any":
         score = _score_contains_any(text, rule)
     elif rtype == "section_contains":
         score = 120 if _match_detect_rule(text, rule) else 0
@@ -114,7 +128,14 @@ def _score_profile(text: str, profile: BankProfile) -> int:
         if "bank of china" in text.lower() or "中国银行" in text:
             score += 40
     elif key == "ccb":
-        if "中国建设银行单位客户专用回单" in text or "中国建设银行" in text:
+        if "工本费/转账汇款手续费/手续费" in text:
+            score -= 80
+        elif "中国建设银行单位客户专用回单" in text or "中国建设银行" in text:
+            score += 40
+    elif key == "ccb_fee":
+        if "工本费/转账汇款手续费/手续费" in text:
+            score += 180
+        if "中国建设银行" in text or "单位客户专用回单" in text:
             score += 40
     return score
 
