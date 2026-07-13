@@ -81,7 +81,8 @@ def rename_receipt_file(
 ) -> str:
     """
     将回单重命名为：付款人名称_用途_交易摘要_货币符号+小写金额.pdf。
-    建行模板下，若用途含「东环广场机动车停车场」或付款人含「待清算间联商户消费款户」，
+    ccb_fee 模板固定为：付款人名称_手续费_货币符号+小写金额.pdf。
+    其他建行模板下，若用途含「东环广场机动车停车场」或付款人含「待清算间联商户消费款户」，
     且能读取表头日期，则在金额前追加日期段。
     若目标名已存在，则自动追加序号后缀避免覆盖。
     返回新文件的完整路径；若无需重命名，返回原路径。
@@ -100,18 +101,22 @@ def rename_receipt_file(
     currency_symbol = _currency_to_symbol(currency)
     purpose_raw = (purpose or '').strip()
     summary_raw = (transaction_summary or '').strip()
+    bank_key_v = (bank_key or '').strip().lower()
 
-    base_parts = [payer_part]
-    if purpose_raw:
-        base_parts.append(_sanitize_filename_part(purpose_raw, '未知用途'))
-    if summary_raw:
-        base_parts.append(_sanitize_filename_part(summary_raw, '未知交易摘要'))
-    date_raw = (header_date or '').strip()
-    if _should_append_ccb_header_date(bank_key, payer_raw, purpose_raw) and date_raw:
-        date_part = _sanitize_filename_part(date_raw, '')
-        if date_part:
-            base_parts.append(date_part)
-    base_parts.append(f'{currency_symbol}{amount_part}')
+    if bank_key_v == 'ccb_fee':
+        base_parts = [payer_part, '手续费', f'{currency_symbol}{amount_part}']
+    else:
+        base_parts = [payer_part]
+        if purpose_raw:
+            base_parts.append(_sanitize_filename_part(purpose_raw, '未知用途'))
+        if summary_raw:
+            base_parts.append(_sanitize_filename_part(summary_raw, '未知交易摘要'))
+        date_raw = (header_date or '').strip()
+        if _should_append_ccb_header_date(bank_key, payer_raw, purpose_raw) and date_raw:
+            date_part = _sanitize_filename_part(date_raw, '')
+            if date_part:
+                base_parts.append(date_part)
+        base_parts.append(f'{currency_symbol}{amount_part}')
     base_name = '_'.join(base_parts)
 
     target = src.with_name(f'{base_name}.pdf')
