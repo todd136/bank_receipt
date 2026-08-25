@@ -47,7 +47,8 @@
       "type": "contains_any",
       "keywords": [
         "cmbchina.com",
-        "CHINA MERCHANTS"
+        "CHINA MERCHANTS",
+        "fbc-web.paas.cmbchina.com"
       ]
     },
     "payer": { "strategy": "generic_first", "scope": "full" }

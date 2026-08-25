@@ -32,12 +32,12 @@ _PAYER_GENERIC = [
     re.compile(r'付款户名\s*[:：]?\s*([^\n\r]+)', re.MULTILINE),
     re.compile(r'付\s*款\s*方\s*名\s*称\s*[:：]?\s*([^\n\r]+)', re.MULTILINE),
     re.compile(r'付款人\s*[(（][^)）]*[)）]\s*[:：]?\s*([^\n\r]+)', re.MULTILINE),
-    # 允许「付款人 张三」，但排除「付款人账号/付款人卡号」被误识别为名称
+    # 允许「付款人：张三」；必须带冒号且同行取值，避免截断行「… 付款人」跨行吞掉「付款开户行」。
     re.compile(
-        r'付\s*款\s*人(?!\s*名\s*称)(?!\s*账\s*号)(?!\s*卡\s*号)(?!\s*开\s*户\s*行)(?!\s*开\s*户\s*银\s*行)\s*[:：]?\s*([^\n\r]+?)(?=\s*收\s*款\s*人|$)',
+        r'付\s*款\s*人(?!\s*名\s*称)(?!\s*账\s*号)(?!\s*卡\s*号)(?!\s*开\s*户\s*行)(?!\s*开\s*户\s*银\s*行)[ \t]*[:：][ \t]*([^\n\r]+?)(?=\s*收\s*款\s*人|$)',
         re.MULTILINE,
     ),
-    re.compile(r'付款人\s*[:：]\s*([^\n\r]+)', re.MULTILINE),
+    re.compile(r'付款人\s*[:：][ \t]*([^\n\r]+)', re.MULTILINE),
     re.compile(r'付\s*款\s*方\s*[:：]?\s*([^\n\r]+)', re.MULTILINE),
     re.compile(r'付款方\s*[:：]\s*([^\n\r]+)', re.MULTILINE),
 ]
@@ -304,15 +304,27 @@ def _purpose_usage_field_only(text: str) -> str:
     return chunk
 
 
+def _is_noise_summary(chunk: str) -> bool:
+    """回单底部「经办/复核/授权」等版式噪声，不是真实摘要。"""
+    s = (chunk or '').strip()
+    if not s:
+        return True
+    if re.match(r'^(经\s*办|复核|授权|回单编号)', s):
+        return True
+    if re.fullmatch(r'[经复核授权办\s：:]*', s):
+        return True
+    return False
+
+
 def _transaction_summary_field_only(text: str) -> str:
     """
     仅从「交易摘要」栏取值；无该栏或值为空则返回空。
+    冒号后只用同行空白 [ \\t]*，避免 \\s* 吞掉换行误取下一行。
     """
     text = _sanitize_pdf_text(text)
     for pat in (
-        r'交\s*易\s*摘\s*要\s*[:：]\s*([^\n\r]*)',
-        r'交\s*易\s*摘\s*要\s*[:：]?\s*([^\n\r]+)',
-        r'交易摘要\s*[:：]\s*([^\n\r]*)',
+        r'交\s*易\s*摘\s*要\s*[:：][ \t]*([^\n\r]*)',
+        r'交易摘要\s*[:：][ \t]*([^\n\r]*)',
     ):
         m = re.search(pat, text, re.MULTILINE)
         if m:
@@ -322,7 +334,7 @@ def _transaction_summary_field_only(text: str) -> str:
     if not m:
         return ''
     chunk = (m.group(1) or '').strip()
-    if not chunk:
+    if not chunk or _is_noise_summary(chunk):
         return ''
     for stop in ('用途', '附言', '摘要', '备注', '金额', '回单编号'):
         m_stop = re.search(label_flex_pattern(stop) + r'\s*[:：]', chunk)
@@ -330,7 +342,7 @@ def _transaction_summary_field_only(text: str) -> str:
             chunk = chunk[:m_stop.start()].strip()
             break
     chunk = _clean_value(chunk) if chunk else ''
-    if chunk in ('-', '－', '—', '无', '无。', 'N/A', 'n/a'):
+    if chunk in ('-', '－', '—', '无', '无。', 'N/A', 'n/a') or _is_noise_summary(chunk):
         return ''
     return chunk
 
@@ -421,12 +433,43 @@ def _first_match(patterns: List[re.Pattern], text: str) -> str:
     return ''
 
 
+def _payer_from_glued_account_line(text: str) -> str:
+    """
+    招行等双栏回单：完整区常有「付款账号：数字付款人：姓名」同一行粘连。
+    """
+    m = re.search(
+        r'付\s*款\s*账\s*号\s*[:：]\s*[0-9\s]+付\s*款\s*人\s*[:：][ \t]*([^\n\r]+)',
+        text,
+        re.MULTILINE,
+    )
+    if not m:
+        return ''
+    return _clean_payer(m.group(1))
+
+
+def _score_payer_candidate(v: str) -> int:
+    s = (v or '').strip()
+    if not s:
+        return -10**9
+    if s in ('付款', '收款', '付款人', '收款人', '名称', '账号'):
+        return -10**9
+    if any(k in s for k in ('开户行', '开户银行', '账号', '卡号')):
+        return -10**8
+    score = len(s) * 10
+    if re.search(r'[\u4e00-\u9fff]{2,}', s):
+        score += 50
+    return score
+
+
 def _best_payer_from_patterns(patterns: List[re.Pattern], text: str) -> str:
     """
     付款人在同一页可能出现多次（分行预览里常有截断行 + 完整行）。
-    这里汇总所有命中后，优先选择更完整的候选，避免拿到首个截断值。
+    汇总命中后按候选质量打分，避免截断行误值与同长度噪声（如「付款」）。
     """
+    glued = _payer_from_glued_account_line(text)
     candidates: List[str] = []
+    if glued:
+        candidates.append(glued)
     for pat in patterns:
         for m in pat.finditer(text):
             raw = (m.group(1) or '').strip()
@@ -437,9 +480,7 @@ def _best_payer_from_patterns(patterns: List[re.Pattern], text: str) -> str:
                 candidates.append(cleaned)
     if not candidates:
         return ''
-    # 优先长度更长的候选；同长度保持原出现顺序
-    best = max(candidates, key=lambda x: len(x))
-    return best
+    return max(candidates, key=_score_payer_candidate)
 
 
 def _payer_from_ccb_fullname(text: str) -> str:
@@ -497,6 +538,8 @@ def _clean_payer(raw: str) -> str:
             s = s[:m.start()].strip()
             break
     if s in ('-', '－', '—', '/', '无'):
+        return ''
+    if s in ('付款', '收款', '付款人', '收款人', '名称'):
         return ''
     if re.fullmatch(r'[\d\s\-]+', s.replace(' ', '')):
         return ''

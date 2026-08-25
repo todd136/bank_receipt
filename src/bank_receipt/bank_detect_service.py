@@ -14,6 +14,25 @@ logger = logging.getLogger(__name__)
 _MIN_ACCEPT_SCORE = 35
 
 
+def _has_cmb_strong_evidence(text: str) -> bool:
+    """
+    招行强证据（保守）：
+    - 域名 / 企业电子回单服务 可单独成立；
+    - 「入账回单」必须与「招商银行 / CHINA MERCHANTS」等同屏组合，避免其他银行入账类回单误命中。
+    """
+    if "cmbchina.com" in text or "fbc-web.paas.cmbchina.com" in text:
+        return True
+    if "企业电子回单服务" in text:
+        return True
+    if "入账回单" not in text:
+        return False
+    if "招商银行" in text:
+        return True
+    if "china merchants" in text.lower():
+        return True
+    return False
+
+
 def _blob_has_any(blob: str, needles: Tuple[str, ...]) -> bool:
     return any(n and n in blob for n in needles)
 
@@ -118,9 +137,8 @@ def _score_profile(text: str, profile: BankProfile) -> int:
 
     # 银行专属强特征（标题/域名/系统标识）加分，避免被“开户行字段”误导。
     key = (profile.key or "").lower()
-    if key == "cmb":
-        if "cmbchina.com" in text or "fbc-web.paas.cmbchina.com" in text or "企业电子回单服务" in text:
-            score += 120
+    if key == "cmb" and _has_cmb_strong_evidence(text):
+        score += 120
     elif key == "cgb":
         if "cgbchina.com.cn" in text or "广发银行客户回单" in text:
             score += 120
@@ -149,11 +167,7 @@ def _apply_global_evidence_bonus(text: str, profile: BankProfile, base_score: in
     key = (profile.key or "").lower()
     rule = profile.detect_rule or {}
     kws = [str(k).strip().lower() for k in rule.get("keywords", []) if str(k).strip()]
-    has_cmb_marker = (
-        "fbc-web.paas.cmbchina.com" in text
-        or "cmbchina.com" in text
-        or "企业电子回单服务" in text
-    )
+    has_cmb_marker = _has_cmb_strong_evidence(text)
     if has_cmb_marker:
         is_cmb_profile = (key == "cmb") or any(("招商银行" in k) or ("china merchants" in k) or ("cmbchina" in k) for k in kws)
         if is_cmb_profile:
