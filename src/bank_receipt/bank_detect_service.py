@@ -146,15 +146,21 @@ def _score_profile(text: str, profile: BankProfile) -> int:
         if "bank of china" in text.lower() or "中国银行" in text:
             score += 40
     elif key == "ccb":
+        # 仅认回单标题，不用裸「中国建设银行」——常出现在交易对手开户行。
         if "工本费/转账汇款手续费/手续费" in text:
             score -= 80
-        elif "中国建设银行单位客户专用回单" in text or "中国建设银行" in text:
+        elif "中国建设银行单位客户专用回单" in text:
             score += 40
     elif key == "ccb_fee":
+        # 手续费模板必须有手续费表头；「中国建设银行」单独出现不足以认定。
         if "工本费/转账汇款手续费/手续费" in text:
             score += 180
-        if "中国建设银行" in text or "单位客户专用回单" in text:
+        if "单位客户专用回单" in text:
             score += 40
+    elif key == "bcm":
+        # 仅认域名等强证据；「回单类型/会计流水号/交通银行开户行」均为通用字段，不做弱特征推断。
+        if "ebank.bankcomm.cn" in text:
+            score += 120
     return score
 
 
